@@ -7,7 +7,7 @@
   <style>
     :root {
       --bg: #060816;
-      --panel: rgba(7, 13, 28, 0.72);
+      --panel: rgba(7, 13, 28, 0.74);
       --panel-border: rgba(120, 240, 255, 0.18);
       --cyan: #67f3ff;
       --lime: #6effb8;
@@ -42,13 +42,16 @@
       display: block;
       width: 100vw;
       height: 100vh;
-      cursor: crosshair;
     }
 
     .hud {
       position: fixed;
       inset: 0;
       pointer-events: none;
+    }
+
+    .hidden {
+      display: none !important;
     }
 
     .panel {
@@ -66,7 +69,7 @@
       top: 18px;
       left: 18px;
       padding: 14px 16px;
-      min-width: 260px;
+      min-width: 280px;
     }
 
     .stats h1 {
@@ -150,7 +153,7 @@
       opacity: 1;
     }
 
-    .overlay {
+    .screen {
       position: absolute;
       inset: 0;
       display: flex;
@@ -158,44 +161,205 @@
       justify-content: center;
       padding: 24px;
       text-align: center;
-      background: radial-gradient(circle at center, rgba(6, 13, 26, 0.36), rgba(3, 4, 10, 0.78));
+      background: radial-gradient(circle at center, rgba(6, 13, 26, 0.38), rgba(3, 4, 10, 0.82));
     }
 
-    .overlay.hidden {
-      display: none;
-    }
-
-    .overlay-card {
-      padding: 28px 34px;
-      max-width: 620px;
-      border-radius: 22px;
-      background: rgba(7, 13, 28, 0.82);
-      border: 1px solid rgba(103, 243, 255, 0.2);
+    .screen-card {
+      width: min(92vw, 760px);
+      padding: 34px 38px;
+      border-radius: 28px;
+      background:
+        linear-gradient(135deg, rgba(7, 14, 30, 0.95), rgba(8, 14, 24, 0.88)),
+        rgba(7, 13, 28, 0.9);
+      border: 1px solid rgba(103, 243, 255, 0.24);
       box-shadow:
-        0 0 45px rgba(0, 0, 0, 0.45),
-        0 0 26px rgba(103, 243, 255, 0.08);
+        0 0 55px rgba(0, 0, 0, 0.5),
+        0 0 28px rgba(103, 243, 255, 0.09);
+      position: relative;
+      overflow: hidden;
     }
 
-    .overlay h2 {
-      margin: 0 0 12px;
-      font-size: clamp(30px, 5vw, 54px);
+    .screen-card::before {
+      content: "";
+      position: absolute;
+      inset: -20% auto auto -10%;
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(103, 243, 255, 0.14), transparent 70%);
+      pointer-events: none;
+    }
+
+    .screen-card::after {
+      content: "";
+      position: absolute;
+      right: -70px;
+      bottom: -70px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(199, 107, 255, 0.12), transparent 70%);
+      pointer-events: none;
+    }
+
+    .screen h2 {
+      margin: 0 0 14px;
+      font-size: clamp(34px, 6vw, 68px);
+      letter-spacing: 0.08em;
       color: var(--cyan);
       text-transform: uppercase;
+      text-shadow: 0 0 22px rgba(103, 243, 255, 0.42);
+      position: relative;
+      z-index: 1;
+    }
+
+    .screen p {
+      margin: 10px 0;
+      font-size: clamp(15px, 2vw, 19px);
+      line-height: 1.6;
+      color: #d8eeff;
+      position: relative;
+      z-index: 1;
+    }
+
+    .menu-tag {
+      display: inline-block;
+      margin-bottom: 18px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      color: #bff7ff;
+      border: 1px solid rgba(103, 243, 255, 0.24);
+      background: rgba(7, 18, 34, 0.72);
+      position: relative;
+      z-index: 1;
+    }
+
+    .menu-score {
+      margin: 24px auto 16px;
+      width: min(100%, 400px);
+      padding: 16px 20px;
+      border-radius: 20px;
+      border: 1px solid rgba(103, 243, 255, 0.16);
+      background: rgba(10, 18, 36, 0.76);
+      box-shadow:
+        inset 0 0 24px rgba(103, 243, 255, 0.05),
+        0 0 18px rgba(0, 0, 0, 0.22);
+      position: relative;
+      z-index: 1;
+    }
+
+    .menu-score .label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 14px;
       letter-spacing: 0.08em;
-      text-shadow: 0 0 18px rgba(103, 243, 255, 0.4);
     }
 
-    .overlay p {
-      margin: 8px 0;
-      font-size: clamp(15px, 2vw, 18px);
-      line-height: 1.55;
-      color: #d4ecff;
-    }
-
-    .hint {
-      margin-top: 16px;
+    .menu-score .value {
+      display: block;
       color: var(--yellow);
-      text-shadow: 0 0 12px rgba(255, 227, 108, 0.24);
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 700;
+      text-shadow: 0 0 16px rgba(255, 227, 108, 0.24);
+    }
+
+    .menu-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 22px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .menu-box {
+      padding: 16px 18px;
+      text-align: left;
+      border-radius: 18px;
+      background: rgba(8, 16, 32, 0.74);
+      border: 1px solid rgba(103, 243, 255, 0.12);
+    }
+
+    .menu-box strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--cyan);
+      font-size: 14px;
+      letter-spacing: 0.08em;
+    }
+
+    .menu-box span {
+      display: block;
+      color: #cfe7f7;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .start-pill {
+      display: inline-block;
+      margin-top: 24px;
+      padding: 14px 24px;
+      border-radius: 999px;
+      color: #fff7d0;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      border: 1px solid rgba(255, 227, 108, 0.34);
+      background: linear-gradient(180deg, rgba(90, 72, 8, 0.84), rgba(52, 38, 5, 0.9));
+      box-shadow: 0 0 22px rgba(255, 227, 108, 0.18);
+      position: relative;
+      z-index: 1;
+    }
+
+    .choice-row {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 22px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .choice-chip {
+      min-width: 180px;
+      padding: 14px 18px;
+      border-radius: 16px;
+      border: 1px solid rgba(103, 243, 255, 0.14);
+      background: rgba(9, 18, 34, 0.78);
+      color: #d5efff;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+
+    .choice-chip.active {
+      transform: translateY(-2px);
+      border-color: rgba(255, 227, 108, 0.42);
+      color: #fff3b0;
+      box-shadow: 0 0 24px rgba(255, 227, 108, 0.14);
+    }
+
+    .choice-help {
+      margin-top: 14px;
+      color: #a9cade;
+      font-size: 14px;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 720px) {
+      .menu-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .screen-card {
+        padding: 26px 22px;
+      }
     }
   </style>
 </head>
@@ -203,29 +367,81 @@
   <canvas id="game"></canvas>
 
   <div class="hud">
-    <div class="panel stats">
-      <h1>Corner Collapse</h1>
-      <div class="row"><span>생존 시간</span><strong id="timeText">0.0초</strong></div>
-      <div class="row"><span>최고 기록</span><strong id="bestText">0.0초</strong></div>
-      <div class="row"><span>대시</span><strong id="dashText">준비 완료</strong></div>
-      <div class="row"><span>중앙 탄막</span><strong id="centerText">속도 220 · 2발</strong></div>
-      <div class="row"><span>조작</span><strong>이동 WASD / 방향키 · 대시 Shift</strong></div>
+    <div id="gameUi">
+      <div class="panel stats">
+        <h1>Corner Collapse</h1>
+        <div class="row"><span>생존 시간</span><strong id="timeText">0.0초</strong></div>
+        <div class="row"><span>최고 기록</span><strong id="bestText">0.0초</strong></div>
+        <div class="row"><span>대시</span><strong id="dashText">준비 완료</strong></div>
+        <div class="row"><span>중앙 탄막</span><strong id="centerText">속도 220 · 2발</strong></div>
+        <div class="row"><span>조작</span><strong>이동 WASD / 방향키 · 대시 Shift</strong></div>
+      </div>
+
+      <div class="panel zones">
+        <h2>코너 정화 상태</h2>
+        <div id="zoneList"></div>
+      </div>
+
+      <div id="warningText" class="warning">경고</div>
     </div>
 
-    <div class="panel zones">
-      <h2>코너 정화 상태</h2>
-      <div id="zoneList"></div>
-    </div>
-
-    <div id="warningText" class="warning">경고</div>
-
-    <div id="overlay" class="overlay">
-      <div class="overlay-card">
+    <div id="menuScreen" class="screen">
+      <div class="screen-card">
+        <div class="menu-tag">NEON SURVIVAL / MAIN MENU</div>
         <h2>Corner Collapse</h2>
-        <p>맵 중앙의 탄막 코어와 네 모서리의 붕괴를 동시에 버텨야 합니다.</p>
-        <p>구역 안에 머물면 부패가 정화되고, 방치하면 터렛이 되어 당신을 조준합니다.</p>
-        <p>중앙 탄막은 시간이 갈수록 빨라지고, 일정 속도에 도달하면 더 촘촘하고 많은 탄을 뿌립니다.</p>
-        <p class="hint">스페이스를 눌러 시작</p>
+        <p>네 모서리의 붕괴와 중앙 탄막 코어를 동시에 버티는 대형 맵 생존 게임.</p>
+        <p>구역을 직접 정화하지 않으면 코너가 터렛으로 전환되고, 시간이 지날수록 중앙 탄막은 더 빠르고 더 조밀해집니다.</p>
+
+        <div class="menu-score">
+          <span class="label">로컬 최고 기록</span>
+          <span id="menuBestText" class="value">0.0초</span>
+        </div>
+
+        <div class="menu-grid">
+          <div class="menu-box">
+            <strong>이동</strong>
+            <span>WASD 또는 방향키로 이동</span>
+          </div>
+          <div class="menu-box">
+            <strong>대시</strong>
+            <span>Shift로 고속 대시, 쿨다운 존재</span>
+          </div>
+          <div class="menu-box">
+            <strong>정화</strong>
+            <span>코너 구역 안에 머물며 부패를 낮추기</span>
+          </div>
+          <div class="menu-box">
+            <strong>실패 조건</strong>
+            <span>탄환 1회 피격 시 즉시 게임오버</span>
+          </div>
+        </div>
+
+        <div class="start-pill">스페이스를 눌러 시작</div>
+      </div>
+    </div>
+
+    <div id="gameOverScreen" class="screen hidden">
+      <div class="screen-card">
+        <div class="menu-tag">RUN ENDED</div>
+        <h2>붕괴</h2>
+        <p>탄환에 맞아 쓰러졌습니다.</p>
+        <p id="gameOverTime">생존 시간: 0.0초</p>
+        <p id="gameOverBest">최고 기록: 0.0초</p>
+        <div class="choice-row">
+          <div id="restartChoice" class="choice-chip active">다시 시작</div>
+          <div id="menuChoice" class="choice-chip">메인 화면</div>
+        </div>
+        <div class="choice-help">방향키 또는 A/D로 선택, Space 또는 Enter로 확정</div>
+      </div>
+    </div>
+
+    <div id="pauseScreen" class="screen hidden">
+      <div class="screen-card">
+        <div class="menu-tag">PAUSED</div>
+        <h2>일시정지</h2>
+        <p>게임이 멈췄습니다.</p>
+        <p>Esc를 다시 누르면 계속 진행합니다.</p>
+        <div class="choice-help">메뉴로 돌아가려면 M, 계속하려면 Esc</div>
       </div>
     </div>
   </div>
@@ -234,24 +450,43 @@
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
 
+    const gameUi = document.getElementById("gameUi");
+    const menuScreen = document.getElementById("menuScreen");
+    const gameOverScreen = document.getElementById("gameOverScreen");
+    const pauseScreen = document.getElementById("pauseScreen");
+
     const timeText = document.getElementById("timeText");
     const bestText = document.getElementById("bestText");
     const dashText = document.getElementById("dashText");
     const centerText = document.getElementById("centerText");
-    const overlay = document.getElementById("overlay");
+    const menuBestText = document.getElementById("menuBestText");
+    const gameOverTime = document.getElementById("gameOverTime");
+    const gameOverBest = document.getElementById("gameOverBest");
+    const restartChoice = document.getElementById("restartChoice");
+    const menuChoice = document.getElementById("menuChoice");
     const zoneList = document.getElementById("zoneList");
     const warningText = document.getElementById("warningText");
 
     const WORLD = { width: 2400, height: 1800 };
     const WORLD_CENTER = { x: WORLD.width / 2, y: WORLD.height / 2 };
     const STORAGE_KEY = "cornerCollapseBest";
+    const CENTER_BARRAGE_START_DELAY = 1;
+    const MENU_PARTICLES = Array.from({ length: 48 }, (_, i) => ({
+      angle: (i / 48) * Math.PI * 2,
+      radius: 180 + Math.random() * 260,
+      size: 1.5 + Math.random() * 3,
+      speed: 0.12 + Math.random() * 0.3,
+      alpha: 0.15 + Math.random() * 0.35
+    }));
 
     const keys = Object.create(null);
     let lastTime = 0;
-    let running = false;
     let elapsed = 0;
+    let gameState = "menu";
     let bestScore = Number(localStorage.getItem(STORAGE_KEY) || 0);
     let warningTimer = 0;
+    let menuDrift = 0;
+    let gameOverChoice = 0;
 
     const camera = {
       x: 0,
@@ -386,9 +621,75 @@
       }
     }
 
-    function resetGame() {
+    function saveBestScore() {
+      localStorage.setItem(STORAGE_KEY, String(bestScore));
+    }
+
+    function refreshBestTexts() {
+      const text = formatTime(bestScore);
+      bestText.textContent = text;
+      menuBestText.textContent = text;
+      gameOverBest.textContent = "최고 기록: " + text;
+    }
+
+    function setGameplayUiVisible(visible) {
+      gameUi.classList.toggle("hidden", !visible);
+    }
+
+    function updateGameOverChoices() {
+      restartChoice.classList.toggle("active", gameOverChoice === 0);
+      menuChoice.classList.toggle("active", gameOverChoice === 1);
+    }
+
+    function showMenu() {
+      gameState = "menu";
+      setGameplayUiVisible(false);
+      menuScreen.classList.remove("hidden");
+      gameOverScreen.classList.add("hidden");
+      pauseScreen.classList.add("hidden");
+      refreshBestTexts();
+    }
+
+    function showGameOver() {
+      gameState = "gameover";
+      setGameplayUiVisible(false);
+      menuScreen.classList.add("hidden");
+      gameOverScreen.classList.remove("hidden");
+      pauseScreen.classList.add("hidden");
+      gameOverChoice = 0;
+      updateGameOverChoices();
+      gameOverTime.textContent = "생존 시간: " + formatTime(elapsed);
+      refreshBestTexts();
+    }
+
+    function showPause() {
+      if (gameState !== "playing") return;
+      gameState = "paused";
+      pauseScreen.classList.remove("hidden");
+    }
+
+    function resumeGame() {
+      if (gameState !== "paused") return;
+      gameState = "playing";
+      pauseScreen.classList.add("hidden");
+    }
+
+    function moveGameOverChoice(direction) {
+      gameOverChoice = (gameOverChoice + direction + 2) % 2;
+      updateGameOverChoices();
+    }
+
+    function confirmGameOverChoice() {
+      if (gameOverChoice === 0) {
+        startGame();
+      } else {
+        showMenu();
+      }
+    }
+
+    function startGame() {
+      gameState = "playing";
       elapsed = 0;
-      running = true;
       warningTimer = 0;
 
       player.x = WORLD.width / 2;
@@ -404,7 +705,7 @@
       bullets.length = 0;
       particles.length = 0;
 
-      centerBarrage.fireTimer = 0;
+      centerBarrage.fireTimer = CENTER_BARRAGE_START_DELAY;
       centerBarrage.pulse = 0;
 
       zones.forEach((zone, index) => {
@@ -414,12 +715,14 @@
         zone.pulse = Math.random() * Math.PI * 2;
       });
 
-      overlay.classList.add("hidden");
+      setGameplayUiVisible(true);
+      menuScreen.classList.add("hidden");
+      gameOverScreen.classList.add("hidden");
+      pauseScreen.classList.add("hidden");
       updateHud();
     }
 
     function endGame() {
-      running = false;
       player.alive = false;
       camera.shake = 0.85;
       camera.shakePower = 24;
@@ -427,16 +730,10 @@
 
       if (elapsed > bestScore) {
         bestScore = elapsed;
-        localStorage.setItem(STORAGE_KEY, String(bestScore));
+        saveBestScore();
       }
 
-      bestText.textContent = formatTime(bestScore);
-      overlay.classList.remove("hidden");
-      overlay.querySelector("h2").textContent = "붕괴";
-      overlay.querySelectorAll("p")[0].textContent = "탄환에 맞아 쓰러졌습니다.";
-      overlay.querySelectorAll("p")[1].textContent = "생존 시간: " + formatTime(elapsed);
-      overlay.querySelectorAll("p")[2].textContent = "최고 기록: " + formatTime(bestScore);
-      overlay.querySelector(".hint").textContent = "스페이스를 눌러 재시작";
+      showGameOver();
     }
 
     function showWarning(message) {
@@ -449,8 +746,8 @@
       const centerState = getCenterBarrageState();
 
       timeText.textContent = formatTime(elapsed);
-      bestText.textContent = formatTime(bestScore);
       centerText.textContent = "속도 " + Math.round(centerState.speed) + " · " + centerState.bulletCount + "발";
+      refreshBestTexts();
 
       if (player.dashCooldownTimer <= 0) {
         dashText.textContent = "준비 완료";
@@ -464,7 +761,7 @@
         item.className = "zone-item";
         const color = getCorruptionColor(zone.corruption, zone.turretActive);
         item.innerHTML =
-          '<div class="name"><span class="swatch" style="color:' + color + '; background:' + color + '"></span>' +
+          '<div class="name"><span class="swatch" style="color:' + color + "; background:" + color + '"></span>' +
           zone.id +
           "</div>" +
           '<strong style="color:' + color + '">' +
@@ -481,7 +778,7 @@
     }
 
     function startDash() {
-      if (!running || !player.alive || player.dashCooldownTimer > 0 || player.dashTimer > 0) {
+      if (gameState !== "playing" || !player.alive || player.dashCooldownTimer > 0 || player.dashTimer > 0) {
         return;
       }
 
@@ -508,7 +805,6 @@
     function shootFromZone(zone) {
       const dir = normalize(player.x - zone.x, player.y - zone.y);
       const bulletSpeed = 250 + elapsed * 8.5;
-
       bullets.push({
         x: zone.x + dir.x * 64,
         y: zone.y + dir.y * 64,
@@ -519,7 +815,6 @@
         color: "#ff9bea",
         glow: "#ff79d8"
       });
-
       emitBurst(zone.x + dir.x * 52, zone.y + dir.y * 52, "#ff79d8", 9, 160, 0.45);
     }
 
@@ -532,8 +827,8 @@
       centerBarrage.fireInterval = state.fireInterval;
       centerBarrage.fireTimer = state.fireInterval;
 
-      // The player-center line defines the forward side, and shots are picked
-      // only from that half-plane by staying within a 180 degree arc.
+      // The player-center line defines the forward half-plane, so central shots
+      // only spread across the player's side instead of full 360 degrees.
       for (let i = 0; i < state.bulletCount; i++) {
         const offset = (Math.random() - 0.5) * Math.PI;
         const angle = aimAngle + offset;
@@ -599,8 +894,7 @@
         const inside = distance(player.x, player.y, zone.x, zone.y) <= zone.r - player.r * 0.3;
         const prevActive = zone.turretActive;
 
-        // Zone corruption rises when ignored and falls while the player holds
-        // position inside the zone to purify it.
+        // Zone corruption rises when ignored and falls while the player stays inside.
         if (inside) {
           zone.corruption = Math.max(0, zone.corruption - cleanseRate * dt);
           if (Math.random() < 16 * dt) {
@@ -636,8 +930,7 @@
           emitBurst(zone.x, zone.y, "#57f2cc", 20, 200, 0.7);
         }
 
-        // Fully corrupted zones become turrets and keep shooting at the player,
-        // with interval shrinking over time.
+        // Fully corrupted zones become turrets and keep shooting at the player.
         if (zone.turretActive) {
           zone.fireTimer -= dt;
           const fireInterval = Math.max(0.42, 1.85 - elapsed * 0.018);
@@ -655,8 +948,7 @@
       centerBarrage.pulse += dt * 2.8;
       centerBarrage.fireTimer -= dt;
 
-      // The center core is the baseline bullet-hell source. Speed ramps first,
-      // then denser volleys unlock at higher speed thresholds.
+      // The center core ramps in speed first, then unlocks denser volleys.
       if (centerBarrage.fireTimer <= 0) {
         shootCenterBarrage();
       }
@@ -682,7 +974,7 @@
           continue;
         }
 
-        // Collision immediately ends the run when any bullet overlaps the player.
+        // Collision ends the run immediately on any bullet hit.
         if (player.alive && distance(bullet.x, bullet.y, player.x, player.y) <= bullet.r + player.r) {
           bullets.splice(i, 1);
           endGame();
@@ -706,7 +998,7 @@
     }
 
     function updateCamera(dt) {
-      // The camera follows the player smoothly and adds shake after death.
+      // The camera follows the player during gameplay and keeps death shake.
       const targetX = clamp(player.x - window.innerWidth / 2, 0, WORLD.width - window.innerWidth);
       const targetY = clamp(player.y - window.innerHeight / 2, 0, WORLD.height - window.innerHeight);
       camera.x = lerp(camera.x, targetX, 1 - Math.exp(-7 * dt));
@@ -743,6 +1035,69 @@
       ctx.strokeStyle = "rgba(125, 240, 255, 0.24)";
       ctx.lineWidth = 3;
       ctx.strokeRect(-camera.x, -camera.y, WORLD.width, WORLD.height);
+    }
+
+    function renderMenuBackdrop() {
+      ctx.fillStyle = "#040913";
+      ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+      const grid = 64;
+      const offsetX = (menuDrift * 18) % grid;
+      const offsetY = (menuDrift * 10) % grid;
+
+      ctx.strokeStyle = "rgba(90, 180, 255, 0.07)";
+      ctx.lineWidth = 1;
+      for (let x = -grid; x < window.innerWidth + grid; x += grid) {
+        ctx.beginPath();
+        ctx.moveTo(x + offsetX, 0);
+        ctx.lineTo(x + offsetX, window.innerHeight);
+        ctx.stroke();
+      }
+      for (let y = -grid; y < window.innerHeight + grid; y += grid) {
+        ctx.beginPath();
+        ctx.moveTo(0, y + offsetY);
+        ctx.lineTo(window.innerWidth, y + offsetY);
+        ctx.stroke();
+      }
+
+      const cx = window.innerWidth * 0.5;
+      const cy = window.innerHeight * 0.5;
+
+      MENU_PARTICLES.forEach((p, i) => {
+        const angle = p.angle + menuDrift * p.speed;
+        const wobble = Math.sin(menuDrift * 1.6 + i * 0.4) * 24;
+        const x = cx + Math.cos(angle) * (p.radius + wobble);
+        const y = cy + Math.sin(angle) * (p.radius * 0.52 + wobble * 0.35);
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = i % 3 === 0 ? "#67f3ff" : i % 3 === 1 ? "#c76bff" : "#ffe36c";
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.beginPath();
+        ctx.arc(x, y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+
+      const glow = ctx.createRadialGradient(cx, cy, 20, cx, cy, 260);
+      glow.addColorStop(0, "rgba(103, 243, 255, 0.16)");
+      glow.addColorStop(0.38, "rgba(103, 243, 255, 0.08)");
+      glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 260, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(103, 243, 255, 0.32)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 84 + Math.sin(menuDrift * 2) * 6, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(199, 107, 255, 0.24)";
+      ctx.beginPath();
+      ctx.arc(cx, cy, 138 + Math.sin(menuDrift * 1.4 + 1.2) * 8, 0, Math.PI * 2);
+      ctx.stroke();
     }
 
     function withCamera(callback) {
@@ -968,10 +1323,8 @@
       ctx.closePath();
     }
 
-    function render() {
-      // Rendering draws the world first, then bullets, actor glow, and UI overlays.
+    function renderGameplayWorld() {
       renderGrid();
-
       withCamera(() => {
         zones.forEach(renderZone);
         renderCenterBarrage();
@@ -981,14 +1334,35 @@
           renderPlayer();
         }
       });
-
       renderMinimap();
     }
 
+    function render() {
+      // Rendering uses a dedicated title backdrop for menu state and the full world only during runs.
+      if (gameState === "menu") {
+        renderMenuBackdrop();
+        return;
+      }
+      renderGameplayWorld();
+    }
+
     function update(dt) {
-      if (!running) {
-        updateCamera(dt);
+      menuDrift += dt;
+
+      if (gameState === "menu") {
         updateParticles(dt);
+        updateHud();
+        return;
+      }
+
+      if (gameState === "paused") {
+        updateHud();
+        return;
+      }
+
+      if (gameState === "gameover") {
+        updateParticles(dt);
+        updateCamera(dt);
         if (warningTimer > 0) warningTimer = Math.max(0, warningTimer - dt);
         updateHud();
         return;
@@ -1008,7 +1382,7 @@
 
       if (elapsed > bestScore) {
         bestScore = elapsed;
-        localStorage.setItem(STORAGE_KEY, String(bestScore));
+        saveBestScore();
       }
 
       updateHud();
@@ -1025,15 +1399,65 @@
     window.addEventListener("keydown", (event) => {
       keys[event.code] = true;
 
+      if (event.code === "Escape") {
+        event.preventDefault();
+        if (gameState === "playing") {
+          showPause();
+          return;
+        }
+        if (gameState === "paused") {
+          resumeGame();
+          return;
+        }
+      }
+
       if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
         event.preventDefault();
         startDash();
       }
 
+      if (gameState === "gameover") {
+        if (event.code === "ArrowLeft" || event.code === "KeyA" || event.code === "ArrowUp" || event.code === "KeyW") {
+          event.preventDefault();
+          moveGameOverChoice(-1);
+          return;
+        }
+        if (event.code === "ArrowRight" || event.code === "KeyD" || event.code === "ArrowDown" || event.code === "KeyS") {
+          event.preventDefault();
+          moveGameOverChoice(1);
+          return;
+        }
+        if (event.code === "Enter" || event.code === "Space") {
+          event.preventDefault();
+          confirmGameOverChoice();
+          return;
+        }
+        if (event.code === "KeyR") {
+          event.preventDefault();
+          gameOverChoice = 0;
+          updateGameOverChoices();
+          confirmGameOverChoice();
+          return;
+        }
+        if (event.code === "KeyM") {
+          event.preventDefault();
+          gameOverChoice = 1;
+          updateGameOverChoices();
+          confirmGameOverChoice();
+          return;
+        }
+      }
+
+      if (gameState === "paused" && event.code === "KeyM") {
+        event.preventDefault();
+        showMenu();
+        return;
+      }
+
       if (event.code === "Space") {
         event.preventDefault();
-        if (!running) {
-          resetGame();
+        if (gameState === "menu") {
+          startGame();
         }
       }
     });
@@ -1045,8 +1469,9 @@
     window.addEventListener("resize", resize);
 
     resize();
-    bestText.textContent = formatTime(bestScore);
+    refreshBestTexts();
     updateHud();
+    showMenu();
     requestAnimationFrame(frame);
   </script>
 </body>
