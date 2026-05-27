@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Corner Collapse</title>
+  <style>
+    :root {
+      --bg: #060816;
+      --panel: rgba(7, 13, 28, 0.72);
+      --panel-border: rgba(120, 240, 255, 0.18);
+      --cyan: #67f3ff;
+      --lime: #6effb8;
+      --yellow: #ffe36c;
+      --orange: #ff9648;
+      --red: #ff4d7a;
+      --purple: #c76bff;
+      --text: #ecf7ff;
+      --muted: #9cbfd3;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(0, 255, 200, 0.08), transparent 30%),
+        radial-gradient(circle at 80% 25%, rgba(180, 0, 255, 0.08), transparent 24%),
+        radial-gradient(circle at 50% 80%, rgba(255, 80, 80, 0.08), transparent 32%),
+        linear-gradient(180deg, #03050d 0%, #071021 48%, #02040a 100%);
+      color: var(--text);
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: crosshair;
+    }
+
+    .hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .panel {
+      position: absolute;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      box-shadow:
+        0 0 25px rgba(0, 180, 255, 0.1),
+        inset 0 0 24px rgba(0, 180, 255, 0.04);
+      backdrop-filter: blur(10px);
+    }
+
+    .stats {
+      top: 18px;
+      left: 18px;
+      padding: 14px 16px;
+      min-width: 260px;
+    }
+
+    .stats h1 {
+      margin: 0 0 10px;
+      font-size: 20px;
+      letter-spacing: 0.08em;
+      color: var(--cyan);
+      text-shadow: 0 0 12px rgba(103, 243, 255, 0.55);
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 6px 0;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .row strong {
+      color: var(--text);
+      font-size: 15px;
+    }
+
+    .zones {
+      top: 18px;
+      right: 18px;
+      padding: 14px 16px;
+      min-width: 240px;
+    }
+
+    .zones h2 {
+      margin: 0 0 10px;
+      font-size: 17px;
+      color: var(--cyan);
+    }
+
+    .zone-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 8px 0;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .zone-item .name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .warning {
+      position: absolute;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 18px;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #fff2f9;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 120, 190, 0.28);
+      background: rgba(70, 8, 30, 0.8);
+      box-shadow: 0 0 30px rgba(255, 60, 140, 0.24);
+      opacity: 0;
+      transition: opacity 0.18s ease;
+    }
+
+    .warning.show {
+      opacity: 1;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      background: radial-gradient(circle at center, rgba(6, 13, 26, 0.36), rgba(3, 4, 10, 0.78));
+    }
+
+    .overlay.hidden {
+      display: none;
+    }
+
+    .overlay-card {
+      padding: 28px 34px;
+      max-width: 620px;
+      border-radius: 22px;
+      background: rgba(7, 13, 28, 0.82);
+      border: 1px solid rgba(103, 243, 255, 0.2);
+      box-shadow:
+        0 0 45px rgba(0, 0, 0, 0.45),
+        0 0 26px rgba(103, 243, 255, 0.08);
+    }
+
+    .overlay h2 {
+      margin: 0 0 12px;
+      font-size: clamp(30px, 5vw, 54px);
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      text-shadow: 0 0 18px rgba(103, 243, 255, 0.4);
+    }
+
+    .overlay p {
+      margin: 8px 0;
+      font-size: clamp(15px, 2vw, 18px);
+      line-height: 1.55;
+      color: #d4ecff;
+    }
+
+    .hint {
+      margin-top: 16px;
+      color: var(--yellow);
+      text-shadow: 0 0 12px rgba(255, 227, 108, 0.24);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div class="hud">
+    <div class="panel stats">
+      <h1>Corner Collapse</h1>
+      <div class="row"><span>생존 시간</span><strong id="timeText">0.0초</strong></div>
+      <div class="row"><span>최고 기록</span><strong id="bestText">0.0초</strong></div>
+      <div class="row"><span>대시</span><strong id="dashText">준비 완료</strong></div>
+      <div class="row"><span>중앙 탄막</span><strong id="centerText">속도 220 · 2발</strong></div>
+      <div class="row"><span>조작</span><strong>이동 WASD / 방향키 · 대시 Shift</strong></div>
+    </div>
+
+    <div class="panel zones">
+      <h2>코너 정화 상태</h2>
+      <div id="zoneList"></div>
+    </div>
+
+    <div id="warningText" class="warning">경고</div>
+
+    <div id="overlay" class="overlay">
+      <div class="overlay-card">
+        <h2>Corner Collapse</h2>
+        <p>맵 중앙의 탄막 코어와 네 모서리의 붕괴를 동시에 버텨야 합니다.</p>
+        <p>구역 안에 머물면 부패가 정화되고, 방치하면 터렛이 되어 당신을 조준합니다.</p>
+        <p>중앙 탄막은 시간이 갈수록 빨라지고, 일정 속도에 도달하면 더 촘촘하고 많은 탄을 뿌립니다.</p>
+        <p class="hint">스페이스를 눌러 시작</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const timeText = document.getElementById("timeText");
+    const bestText = document.getElementById("bestText");
+    const dashText = document.getElementById("dashText");
+    const centerText = document.getElementById("centerText");
+    const overlay = document.getElementById("overlay");
+    const zoneList = document.getElementById("zoneList");
+    const warningText = document.getElementById("warningText");
+
+    const WORLD = { width: 2400, height: 1800 };
+    const WORLD_CENTER = { x: WORLD.width / 2, y: WORLD.height / 2 };
+    const STORAGE_KEY = "cornerCollapseBest";
+
+    const keys = Object.create(null);
+    let lastTime = 0;
+    let running = false;
+    let elapsed = 0;
+    let bestScore = Number(localStorage.getItem(STORAGE_KEY) || 0);
+    let warningTimer = 0;
+
+    const camera = {
+      x: 0,
+      y: 0,
+      shake: 0,
+      shakePower: 0
+    };
+
+    const player = {
+      x: WORLD.width / 2,
+      y: WORLD.height / 2,
+      r: 14,
+      speed: 550,
+      vx: 0,
+      vy: 0,
+      dashSpeed: 920,
+      dashDuration: 0.16,
+      dashTimer: 0,
+      dashCooldown: 1.8,
+      dashCooldownTimer: 0,
+      aimX: 1,
+      aimY: 0,
+      alive: true
+    };
+
+    const bullets = [];
+    const particles = [];
+
+    const centerBarrage = {
+      x: WORLD_CENTER.x,
+      y: WORLD_CENTER.y,
+      fireTimer: 0,
+      pulse: 0,
+      speed: 220,
+      bulletCount: 2,
+      fireInterval: 1.05
+    };
+
+    const zoneDefs = [
+      { id: "좌상", x: 260, y: 260 },
+      { id: "우상", x: WORLD.width - 260, y: 260 },
+      { id: "좌하", x: 260, y: WORLD.height - 260 },
+      { id: "우하", x: WORLD.width - 260, y: WORLD.height - 260 }
+    ];
+
+    const zones = zoneDefs.map((z) => ({
+      ...z,
+      r: 130,
+      corruption: 16 + Math.random() * 20,
+      turretActive: false,
+      fireTimer: 0,
+      pulse: Math.random() * Math.PI * 2
+    }));
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(window.innerWidth * dpr);
+      canvas.height = Math.floor(window.innerHeight * dpr);
+      canvas.style.width = window.innerWidth + "px";
+      canvas.style.height = window.innerHeight + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function distance(ax, ay, bx, by) {
+      return Math.hypot(ax - bx, ay - by);
+    }
+
+    function normalize(x, y) {
+      const len = Math.hypot(x, y) || 1;
+      return { x: x / len, y: y / len };
+    }
+
+    function formatTime(value) {
+      return value.toFixed(1) + "초";
+    }
+
+    function getCorruptionColor(value, active) {
+      if (active || value >= 100) return "#c76bff";
+      if (value >= 75) return "#ff4d7a";
+      if (value >= 50) return "#ff9648";
+      if (value >= 25) return "#ffe36c";
+      return "#57f2cc";
+    }
+
+    function getCenterBarrageState() {
+      const speed = 220 + elapsed * 7.5;
+      let bulletCount = 2;
+      let fireInterval = 1.05;
+
+      if (speed >= 360) {
+        bulletCount = 3;
+        fireInterval = 0.82;
+      }
+      if (speed >= 520) {
+        bulletCount = 5;
+        fireInterval = 0.62;
+      }
+      if (speed >= 700) {
+        bulletCount = 7;
+        fireInterval = 0.45;
+      }
+
+      return { speed, bulletCount, fireInterval };
+    }
+
+    function spawnParticle(x, y, color, speed = 120, life = 0.65, size = 2 + Math.random() * 3) {
+      const angle = Math.random() * Math.PI * 2;
+      const velocity = Math.random() * speed;
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * velocity,
+        vy: Math.sin(angle) * velocity,
+        life,
+        maxLife: life,
+        size,
+        color
+      });
+    }
+
+    function emitBurst(x, y, color, count, speed, life) {
+      for (let i = 0; i < count; i++) {
+        spawnParticle(x, y, color, speed, life, 2 + Math.random() * 3);
+      }
+    }
+
+    function resetGame() {
+      elapsed = 0;
+      running = true;
+      warningTimer = 0;
+
+      player.x = WORLD.width / 2;
+      player.y = WORLD.height / 2;
+      player.vx = 0;
+      player.vy = 0;
+      player.aimX = 1;
+      player.aimY = 0;
+      player.dashTimer = 0;
+      player.dashCooldownTimer = 0;
+      player.alive = true;
+
+      bullets.length = 0;
+      particles.length = 0;
+
+      centerBarrage.fireTimer = 0;
+      centerBarrage.pulse = 0;
+
+      zones.forEach((zone, index) => {
+        zone.corruption = 10 + index * 4 + Math.random() * 18;
+        zone.turretActive = false;
+        zone.fireTimer = 0;
+        zone.pulse = Math.random() * Math.PI * 2;
+      });
+
+      overlay.classList.add("hidden");
+      updateHud();
+    }
+
+    function endGame() {
+      running = false;
+      player.alive = false;
+      camera.shake = 0.85;
+      camera.shakePower = 24;
+      emitBurst(player.x, player.y, "#ff5d88", 42, 320, 1.1);
+
+      if (elapsed > bestScore) {
+        bestScore = elapsed;
+        localStorage.setItem(STORAGE_KEY, String(bestScore));
+      }
+
+      bestText.textContent = formatTime(bestScore);
+      overlay.classList.remove("hidden");
+      overlay.querySelector("h2").textContent = "붕괴";
+      overlay.querySelectorAll("p")[0].textContent = "탄환에 맞아 쓰러졌습니다.";
+      overlay.querySelectorAll("p")[1].textContent = "생존 시간: " + formatTime(elapsed);
+      overlay.querySelectorAll("p")[2].textContent = "최고 기록: " + formatTime(bestScore);
+      overlay.querySelector(".hint").textContent = "스페이스를 눌러 재시작";
+    }
+
+    function showWarning(message) {
+      warningTimer = 2.2;
+      warningText.textContent = message;
+      warningText.classList.add("show");
+    }
+
+    function updateHud() {
+      const centerState = getCenterBarrageState();
+
+      timeText.textContent = formatTime(elapsed);
+      bestText.textContent = formatTime(bestScore);
+      centerText.textContent = "속도 " + Math.round(centerState.speed) + " · " + centerState.bulletCount + "발";
+
+      if (player.dashCooldownTimer <= 0) {
+        dashText.textContent = "준비 완료";
+      } else {
+        dashText.textContent = player.dashCooldownTimer.toFixed(1) + "초";
+      }
+
+      zoneList.innerHTML = "";
+      zones.forEach((zone) => {
+        const item = document.createElement("div");
+        item.className = "zone-item";
+        const color = getCorruptionColor(zone.corruption, zone.turretActive);
+        item.innerHTML =
+          '<div class="name"><span class="swatch" style="color:' + color + '; background:' + color + '"></span>' +
+          zone.id +
+          "</div>" +
+          '<strong style="color:' + color + '">' +
+          Math.round(zone.corruption) +
+          "% " +
+          (zone.turretActive ? "터렛" : "정화 가능") +
+          "</strong>";
+        zoneList.appendChild(item);
+      });
+
+      if (warningTimer <= 0) {
+        warningText.classList.remove("show");
+      }
+    }
+
+    function startDash() {
+      if (!running || !player.alive || player.dashCooldownTimer > 0 || player.dashTimer > 0) {
+        return;
+      }
+
+      let moveX = 0;
+      let moveY = 0;
+      if (keys["KeyA"] || keys["ArrowLeft"]) moveX -= 1;
+      if (keys["KeyD"] || keys["ArrowRight"]) moveX += 1;
+      if (keys["KeyW"] || keys["ArrowUp"]) moveY -= 1;
+      if (keys["KeyS"] || keys["ArrowDown"]) moveY += 1;
+
+      if (moveX === 0 && moveY === 0) {
+        moveX = player.aimX;
+        moveY = player.aimY;
+      }
+
+      const dir = normalize(moveX, moveY);
+      player.aimX = dir.x;
+      player.aimY = dir.y;
+      player.dashTimer = player.dashDuration;
+      player.dashCooldownTimer = player.dashCooldown;
+      emitBurst(player.x, player.y, "#6ef5ff", 16, 240, 0.5);
+    }
+
+    function shootFromZone(zone) {
+      const dir = normalize(player.x - zone.x, player.y - zone.y);
+      const bulletSpeed = 250 + elapsed * 8.5;
+
+      bullets.push({
+        x: zone.x + dir.x * 64,
+        y: zone.y + dir.y * 64,
+        vx: dir.x * bulletSpeed,
+        vy: dir.y * bulletSpeed,
+        r: 7,
+        life: 8,
+        color: "#ff9bea",
+        glow: "#ff79d8"
+      });
+
+      emitBurst(zone.x + dir.x * 52, zone.y + dir.y * 52, "#ff79d8", 9, 160, 0.45);
+    }
+
+    function shootCenterBarrage() {
+      const state = getCenterBarrageState();
+      const aimAngle = Math.atan2(player.y - centerBarrage.y, player.x - centerBarrage.x);
+
+      centerBarrage.speed = state.speed;
+      centerBarrage.bulletCount = state.bulletCount;
+      centerBarrage.fireInterval = state.fireInterval;
+      centerBarrage.fireTimer = state.fireInterval;
+
+      // The player-center line defines the forward side, and shots are picked
+      // only from that half-plane by staying within a 180 degree arc.
+      for (let i = 0; i < state.bulletCount; i++) {
+        const offset = (Math.random() - 0.5) * Math.PI;
+        const angle = aimAngle + offset;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
+        const radius = 48 + Math.random() * 12;
+
+        bullets.push({
+          x: centerBarrage.x + dirX * radius,
+          y: centerBarrage.y + dirY * radius,
+          vx: dirX * state.speed,
+          vy: dirY * state.speed,
+          r: 6 + Math.random() * 2,
+          life: 7.5,
+          color: "#77f7ff",
+          glow: "#67f3ff"
+        });
+      }
+
+      emitBurst(centerBarrage.x, centerBarrage.y, "#67f3ff", 12 + state.bulletCount, 130, 0.36);
+    }
+
+    function updatePlayer(dt) {
+      let moveX = 0;
+      let moveY = 0;
+      if (keys["KeyA"] || keys["ArrowLeft"]) moveX -= 1;
+      if (keys["KeyD"] || keys["ArrowRight"]) moveX += 1;
+      if (keys["KeyW"] || keys["ArrowUp"]) moveY -= 1;
+      if (keys["KeyS"] || keys["ArrowDown"]) moveY += 1;
+
+      const moving = moveX !== 0 || moveY !== 0;
+      if (moving) {
+        const dir = normalize(moveX, moveY);
+        player.aimX = dir.x;
+        player.aimY = dir.y;
+      }
+
+      if (player.dashCooldownTimer > 0) {
+        player.dashCooldownTimer = Math.max(0, player.dashCooldownTimer - dt);
+      }
+
+      if (player.dashTimer > 0) {
+        player.dashTimer = Math.max(0, player.dashTimer - dt);
+        player.vx = player.aimX * player.dashSpeed;
+        player.vy = player.aimY * player.dashSpeed;
+        spawnParticle(player.x, player.y, "#6ef5ff", 30, 0.28, 7);
+      } else {
+        const dir = moving ? normalize(moveX, moveY) : { x: 0, y: 0 };
+        player.vx = dir.x * player.speed;
+        player.vy = dir.y * player.speed;
+      }
+
+      player.x = clamp(player.x + player.vx * dt, player.r, WORLD.width - player.r);
+      player.y = clamp(player.y + player.vy * dt, player.r, WORLD.height - player.r);
+    }
+
+    function updateZones(dt) {
+      const growthRate = (6.5 + elapsed * 0.16) * 0.2;
+      const cleanseRate = 27 + elapsed * 0.05;
+
+      zones.forEach((zone) => {
+        zone.pulse += dt * 2.5;
+        const inside = distance(player.x, player.y, zone.x, zone.y) <= zone.r - player.r * 0.3;
+        const prevActive = zone.turretActive;
+
+        // Zone corruption rises when ignored and falls while the player holds
+        // position inside the zone to purify it.
+        if (inside) {
+          zone.corruption = Math.max(0, zone.corruption - cleanseRate * dt);
+          if (Math.random() < 16 * dt) {
+            spawnParticle(
+              zone.x + (Math.random() - 0.5) * zone.r * 1.2,
+              zone.y + (Math.random() - 0.5) * zone.r * 1.2,
+              "#57f2cc",
+              70,
+              0.55,
+              3 + Math.random() * 3
+            );
+          }
+        } else {
+          zone.corruption = Math.min(100, zone.corruption + growthRate * dt);
+          if (Math.random() < 8 * dt) {
+            spawnParticle(
+              zone.x + (Math.random() - 0.5) * zone.r,
+              zone.y + (Math.random() - 0.5) * zone.r,
+              getCorruptionColor(zone.corruption, zone.turretActive),
+              50,
+              0.45,
+              2 + Math.random() * 2
+            );
+          }
+        }
+
+        zone.turretActive = zone.corruption >= 100;
+
+        if (!prevActive && zone.turretActive) {
+          showWarning(zone.id + " 구역이 붕괴하여 터렛이 활성화되었습니다");
+          emitBurst(zone.x, zone.y, "#c76bff", 24, 220, 0.8);
+        } else if (prevActive && !zone.turretActive) {
+          emitBurst(zone.x, zone.y, "#57f2cc", 20, 200, 0.7);
+        }
+
+        // Fully corrupted zones become turrets and keep shooting at the player,
+        // with interval shrinking over time.
+        if (zone.turretActive) {
+          zone.fireTimer -= dt;
+          const fireInterval = Math.max(0.42, 1.85 - elapsed * 0.018);
+          if (zone.fireTimer <= 0) {
+            zone.fireTimer = fireInterval;
+            shootFromZone(zone);
+          }
+        } else {
+          zone.fireTimer = 0;
+        }
+      });
+    }
+
+    function updateCenterBarrage(dt) {
+      centerBarrage.pulse += dt * 2.8;
+      centerBarrage.fireTimer -= dt;
+
+      // The center core is the baseline bullet-hell source. Speed ramps first,
+      // then denser volleys unlock at higher speed thresholds.
+      if (centerBarrage.fireTimer <= 0) {
+        shootCenterBarrage();
+      }
+    }
+
+    function updateBullets(dt) {
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+        bullet.x += bullet.vx * dt;
+        bullet.y += bullet.vy * dt;
+        bullet.life -= dt;
+
+        if (Math.random() < 50 * dt) {
+          spawnParticle(bullet.x, bullet.y, bullet.glow || "#ff79d8", 20, 0.22, 3);
+        }
+
+        if (
+          bullet.life <= 0 ||
+          bullet.x < -40 || bullet.y < -40 ||
+          bullet.x > WORLD.width + 40 || bullet.y > WORLD.height + 40
+        ) {
+          bullets.splice(i, 1);
+          continue;
+        }
+
+        // Collision immediately ends the run when any bullet overlaps the player.
+        if (player.alive && distance(bullet.x, bullet.y, player.x, player.y) <= bullet.r + player.r) {
+          bullets.splice(i, 1);
+          endGame();
+          return;
+        }
+      }
+    }
+
+    function updateParticles(dt) {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= 0.97;
+        p.vy *= 0.97;
+        p.life -= dt;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+    }
+
+    function updateCamera(dt) {
+      // The camera follows the player smoothly and adds shake after death.
+      const targetX = clamp(player.x - window.innerWidth / 2, 0, WORLD.width - window.innerWidth);
+      const targetY = clamp(player.y - window.innerHeight / 2, 0, WORLD.height - window.innerHeight);
+      camera.x = lerp(camera.x, targetX, 1 - Math.exp(-7 * dt));
+      camera.y = lerp(camera.y, targetY, 1 - Math.exp(-7 * dt));
+
+      if (camera.shake > 0) {
+        camera.shake = Math.max(0, camera.shake - dt * 1.6);
+      }
+    }
+
+    function renderGrid() {
+      const grid = 60;
+      const offsetX = -camera.x % grid;
+      const offsetY = -camera.y % grid;
+
+      ctx.fillStyle = "#040913";
+      ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+      ctx.strokeStyle = "rgba(90, 180, 255, 0.08)";
+      ctx.lineWidth = 1;
+      for (let x = offsetX; x < window.innerWidth; x += grid) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, window.innerHeight);
+        ctx.stroke();
+      }
+      for (let y = offsetY; y < window.innerHeight; y += grid) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(window.innerWidth, y);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = "rgba(125, 240, 255, 0.24)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-camera.x, -camera.y, WORLD.width, WORLD.height);
+    }
+
+    function withCamera(callback) {
+      const shakeX = camera.shake > 0 ? (Math.random() - 0.5) * camera.shakePower * camera.shake : 0;
+      const shakeY = camera.shake > 0 ? (Math.random() - 0.5) * camera.shakePower * camera.shake : 0;
+      ctx.save();
+      ctx.translate(-camera.x + shakeX, -camera.y + shakeY);
+      callback();
+      ctx.restore();
+    }
+
+    function renderCenterBarrage() {
+      const pulse = 30 + Math.sin(centerBarrage.pulse) * 6;
+
+      ctx.save();
+      const halo = ctx.createRadialGradient(
+        centerBarrage.x,
+        centerBarrage.y,
+        8,
+        centerBarrage.x,
+        centerBarrage.y,
+        pulse + 36
+      );
+      halo.addColorStop(0, "rgba(103, 243, 255, 0.38)");
+      halo.addColorStop(0.5, "rgba(103, 243, 255, 0.14)");
+      halo.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(centerBarrage.x, centerBarrage.y, pulse + 36, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.shadowBlur = 22;
+      ctx.shadowColor = "#67f3ff";
+      ctx.fillStyle = "#67f3ff";
+      ctx.beginPath();
+      ctx.arc(centerBarrage.x, centerBarrage.y, 18, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(255,255,255,0.78)";
+      ctx.beginPath();
+      ctx.arc(centerBarrage.x, centerBarrage.y, pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function renderZone(zone) {
+      const active = zone.turretActive;
+      const baseColor = getCorruptionColor(zone.corruption, active);
+      const aura = 18 + Math.sin(zone.pulse) * 4;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, zone.r + aura, 0, Math.PI * 2);
+      const glow = ctx.createRadialGradient(zone.x, zone.y, 18, zone.x, zone.y, zone.r + aura);
+      glow.addColorStop(0, active ? "rgba(199, 107, 255, 0.26)" : "rgba(87, 242, 204, 0.22)");
+      glow.addColorStop(0.6, active ? "rgba(255, 77, 122, 0.16)" : "rgba(255, 227, 108, 0.08)");
+      glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = glow;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, zone.r, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(8, 18, 32, 0.72)";
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(210, 236, 255, 0.14)";
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, zone.r - 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (zone.corruption / 100));
+      ctx.lineWidth = 10;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = baseColor;
+      ctx.shadowBlur = 16;
+      ctx.shadowColor = baseColor;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = baseColor;
+      ctx.font = "700 22px Malgun Gothic";
+      ctx.textAlign = "center";
+      ctx.fillText(zone.id, zone.x, zone.y - 6);
+      ctx.fillStyle = "#d7efff";
+      ctx.font = "600 18px Malgun Gothic";
+      ctx.fillText(Math.round(zone.corruption) + "%", zone.x, zone.y + 24);
+
+      if (active) {
+        const aim = normalize(player.x - zone.x, player.y - zone.y);
+        ctx.save();
+        ctx.translate(zone.x, zone.y);
+        ctx.rotate(Math.atan2(aim.y, aim.x));
+        ctx.fillStyle = "rgba(255, 80, 170, 0.95)";
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = "#ff5dc4";
+        ctx.beginPath();
+        ctx.moveTo(-16, -18);
+        ctx.lineTo(26, 0);
+        ctx.lineTo(-16, 18);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillRect(-22, -10, 24, 20);
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.arc(zone.x, zone.y, 18 + Math.sin(zone.pulse * 1.7) * 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(103, 243, 255, 0.3)";
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function renderPlayer() {
+      ctx.save();
+      const glow = player.dashTimer > 0 ? "#6ef5ff" : "#7cf8ff";
+      ctx.shadowBlur = 22;
+      ctx.shadowColor = glow;
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255,255,255,0.95)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(player.x, player.y);
+      ctx.lineTo(player.x + player.aimX * 18, player.y + player.aimY * 18);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function renderBullets() {
+      bullets.forEach((bullet) => {
+        ctx.save();
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = bullet.glow || "#ff79d8";
+        ctx.fillStyle = bullet.color || "#ff9bea";
+        ctx.beginPath();
+        ctx.arc(bullet.x, bullet.y, bullet.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    function renderParticles() {
+      particles.forEach((p) => {
+        ctx.save();
+        ctx.globalAlpha = p.life / p.maxLife;
+        ctx.fillStyle = p.color;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    function renderMinimap() {
+      const mapW = 220;
+      const mapH = 160;
+      const x = window.innerWidth - mapW - 22;
+      const y = window.innerHeight - mapH - 22;
+
+      ctx.save();
+      ctx.fillStyle = "rgba(4, 10, 20, 0.74)";
+      ctx.strokeStyle = "rgba(103, 243, 255, 0.2)";
+      ctx.lineWidth = 1;
+      roundRect(x, y, mapW, mapH, 16);
+      ctx.fill();
+      ctx.stroke();
+
+      const scaleX = mapW / WORLD.width;
+      const scaleY = mapH / WORLD.height;
+
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.strokeRect(x + 10, y + 10, mapW - 20, mapH - 20);
+
+      ctx.fillStyle = "#67f3ff";
+      ctx.shadowBlur = 16;
+      ctx.shadowColor = "#67f3ff";
+      ctx.beginPath();
+      ctx.arc(x + centerBarrage.x * scaleX, y + centerBarrage.y * scaleY, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      zones.forEach((zone) => {
+        const zx = x + zone.x * scaleX;
+        const zy = y + zone.y * scaleY;
+        const color = getCorruptionColor(zone.corruption, zone.turretActive);
+        ctx.fillStyle = color;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = color;
+        ctx.beginPath();
+        ctx.arc(zx, zy, 7, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = "#7cf8ff";
+      ctx.fillStyle = "#7cf8ff";
+      ctx.beginPath();
+      ctx.arc(x + player.x * scaleX, y + player.y * scaleY, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      const camX = x + camera.x * scaleX;
+      const camY = y + camera.y * scaleY;
+      const camW = window.innerWidth * scaleX;
+      const camH = window.innerHeight * scaleY;
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255,255,255,0.24)";
+      ctx.strokeRect(camX, camY, camW, camH);
+      ctx.restore();
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function render() {
+      // Rendering draws the world first, then bullets, actor glow, and UI overlays.
+      renderGrid();
+
+      withCamera(() => {
+        zones.forEach(renderZone);
+        renderCenterBarrage();
+        renderParticles();
+        renderBullets();
+        if (player.alive) {
+          renderPlayer();
+        }
+      });
+
+      renderMinimap();
+    }
+
+    function update(dt) {
+      if (!running) {
+        updateCamera(dt);
+        updateParticles(dt);
+        if (warningTimer > 0) warningTimer = Math.max(0, warningTimer - dt);
+        updateHud();
+        return;
+      }
+
+      elapsed += dt;
+      if (warningTimer > 0) warningTimer = Math.max(0, warningTimer - dt);
+
+      // Main game loop updates player motion, corruption, turret shots,
+      // central barrage, bullet movement, particles, and camera.
+      updatePlayer(dt);
+      updateZones(dt);
+      updateCenterBarrage(dt);
+      updateBullets(dt);
+      updateParticles(dt);
+      updateCamera(dt);
+
+      if (elapsed > bestScore) {
+        bestScore = elapsed;
+        localStorage.setItem(STORAGE_KEY, String(bestScore));
+      }
+
+      updateHud();
+    }
+
+    function frame(timestamp) {
+      const dt = Math.min(0.033, (timestamp - lastTime) / 1000 || 0);
+      lastTime = timestamp;
+      update(dt);
+      render();
+      requestAnimationFrame(frame);
+    }
+
+    window.addEventListener("keydown", (event) => {
+      keys[event.code] = true;
+
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
+        event.preventDefault();
+        startDash();
+      }
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        if (!running) {
+          resetGame();
+        }
+      }
+    });
+
+    window.addEventListener("keyup", (event) => {
+      keys[event.code] = false;
+    });
+
+    window.addEventListener("resize", resize);
+
+    resize();
+    bestText.textContent = formatTime(bestScore);
+    updateHud();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
