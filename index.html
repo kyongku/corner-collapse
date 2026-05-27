@@ -66,10 +66,15 @@
     }
 
     .stats {
-      top: 18px;
-      left: 18px;
-      padding: 14px 16px;
-      min-width: 280px;
+      top: 14px;
+      left: 14px;
+      padding: 6px 10px;
+      min-width: 0;
+      border-radius: 12px;
+      background: rgba(7, 13, 28, 0.2);
+      border-color: rgba(120, 240, 255, 0.08);
+      box-shadow: none;
+      backdrop-filter: blur(4px);
     }
 
     .stats h1 {
@@ -95,40 +100,10 @@
       font-size: 15px;
     }
 
-    .zones {
-      top: 18px;
-      right: 18px;
-      padding: 14px 16px;
-      min-width: 240px;
-    }
-
-    .zones h2 {
-      margin: 0 0 10px;
-      font-size: 17px;
-      color: var(--cyan);
-    }
-
-    .zone-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin: 8px 0;
+    .time-readout {
+      color: rgba(236, 247, 255, 0.72);
       font-size: 14px;
-      color: var(--muted);
-    }
-
-    .zone-item .name {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .swatch {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      box-shadow: 0 0 10px currentColor;
+      letter-spacing: 0.04em;
     }
 
     .warning {
@@ -369,17 +344,10 @@
   <div class="hud">
     <div id="gameUi">
       <div class="panel stats">
-        <h1>Corner Collapse</h1>
-        <div class="row"><span>생존 시간</span><strong id="timeText">0.0초</strong></div>
-        <div class="row"><span>최고 기록</span><strong id="bestText">0.0초</strong></div>
-        <div class="row"><span>대시</span><strong id="dashText">준비 완료</strong></div>
-        <div class="row"><span>중앙 탄막</span><strong id="centerText">속도 220 · 2발</strong></div>
-        <div class="row"><span>조작</span><strong>이동 WASD / 방향키 · 대시 Shift</strong></div>
-      </div>
-
-      <div class="panel zones">
-        <h2>코너 정화 상태</h2>
-        <div id="zoneList"></div>
+        <div id="timeText" class="time-readout">0.0s</div>
+        <div class="hidden" id="bestText">0.0초</div>
+        <div class="hidden" id="dashText">준비 완료</div>
+        <div class="hidden" id="centerText">속도 220 · 2발</div>
       </div>
 
       <div id="warningText" class="warning">경고</div>
@@ -404,7 +372,7 @@
           </div>
           <div class="menu-box">
             <strong>대시</strong>
-            <span>Shift로 고속 대시, 쿨다운 존재</span>
+            <span>Shift 방향 대시 / 우클릭 마우스 위치 대시</span>
           </div>
           <div class="menu-box">
             <strong>정화</strong>
@@ -464,13 +432,14 @@
     const gameOverBest = document.getElementById("gameOverBest");
     const restartChoice = document.getElementById("restartChoice");
     const menuChoice = document.getElementById("menuChoice");
-    const zoneList = document.getElementById("zoneList");
     const warningText = document.getElementById("warningText");
 
     const WORLD = { width: 2400, height: 1800 };
     const WORLD_CENTER = { x: WORLD.width / 2, y: WORLD.height / 2 };
     const STORAGE_KEY = "cornerCollapseBest";
     const CENTER_BARRAGE_START_DELAY = 1;
+    const CENTER_BULLET_SPEED_GROWTH_PER_SECOND = 8.4;
+    const TURRET_BULLET_SPEED_GROWTH_PER_SECOND = 8.2;
     const MENU_PARTICLES = Array.from({ length: 48 }, (_, i) => ({
       angle: (i / 48) * Math.PI * 2,
       radius: 180 + Math.random() * 260,
@@ -480,6 +449,12 @@
     }));
 
     const keys = Object.create(null);
+    const mouse = {
+      screenX: 0,
+      screenY: 0,
+      worldX: WORLD_CENTER.x,
+      worldY: WORLD_CENTER.y
+    };
     let lastTime = 0;
     let elapsed = 0;
     let gameState = "menu";
@@ -502,18 +477,25 @@
       speed: 550,
       vx: 0,
       vy: 0,
-      dashSpeed: 2000,
-      dashDuration: 0.06,
+      dashSpeed: 5250,
+      dashDuration: 0.05,
       dashTimer: 0,
-      dashCooldown: 0.5,
+      dashCooldown: 1.0,
       dashCooldownTimer: 0,
       aimX: 1,
       aimY: 0,
       alive: true
     };
+    const PLAYER_SPEED_GROWTH_PER_SECOND = CENTER_BULLET_SPEED_GROWTH_PER_SECOND * 0.2;
+    const playerBaseSpeed = player.speed;
 
     const bullets = [];
     const particles = [];
+    const dashState = {
+      dirX: 1,
+      dirY: 0,
+      remaining: 0
+    };
 
     const centerBarrage = {
       x: WORLD_CENTER.x,
@@ -571,6 +553,34 @@
       return value.toFixed(1) + "초";
     }
 
+    function formatHudTime(value) {
+      return value.toFixed(1) + "s";
+    }
+
+    function getMaxDashDistance() {
+      return player.dashSpeed * player.dashDuration;
+    }
+
+    function getPointerWorldPosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      const screenX = ((event.clientX - rect.left) / rect.width) * window.innerWidth;
+      const screenY = ((event.clientY - rect.top) / rect.height) * window.innerHeight;
+      return {
+        screenX,
+        screenY,
+        worldX: camera.x + screenX,
+        worldY: camera.y + screenY
+      };
+    }
+
+    function updateMousePosition(event) {
+      const pointer = getPointerWorldPosition(event);
+      mouse.screenX = pointer.screenX;
+      mouse.screenY = pointer.screenY;
+      mouse.worldX = pointer.worldX;
+      mouse.worldY = pointer.worldY;
+    }
+
     function getCorruptionColor(value, active) {
       if (active || value >= 100) return "#c76bff";
       if (value >= 75) return "#ff4d7a";
@@ -580,24 +590,16 @@
     }
 
     function getCenterBarrageState() {
-      const speed = 220 + elapsed * 4.8;
-      let bulletCount = 2;
-      let fireInterval = 1.12;
-
-      if (speed >= 420) {
-        bulletCount = 3;
-        fireInterval = 0.94;
-      }
-      if (speed >= 600) {
-        bulletCount = 5;
-        fireInterval = 0.78;
-      }
-      if (speed >= 780) {
-        bulletCount = 7;
-        fireInterval = 0.64;
-      }
-
+      const speed = 220 + elapsed * CENTER_BULLET_SPEED_GROWTH_PER_SECOND;
+      const bulletCount = Math.max(2, Math.min(18, 2 + Math.floor((speed - 220) / 85)));
+      const fireInterval = Math.max(0.16, 1.12 - (speed - 220) * 0.00105);
       return { speed, bulletCount, fireInterval };
+    }
+
+    function getTurretShotState() {
+      const speed = 250 + elapsed * TURRET_BULLET_SPEED_GROWTH_PER_SECOND;
+      const fireInterval = Math.max(0.34, 2.0 - (speed - 250) * 0.003);
+      return { speed, fireInterval };
     }
 
     function spawnParticle(x, y, color, speed = 120, life = 0.65, size = 2 + Math.random() * 3) {
@@ -704,6 +706,7 @@
 
       bullets.length = 0;
       particles.length = 0;
+      dashState.remaining = 0;
 
       centerBarrage.fireTimer = CENTER_BARRAGE_START_DELAY;
       centerBarrage.pulse = 0;
@@ -745,7 +748,7 @@
     function updateHud() {
       const centerState = getCenterBarrageState();
 
-      timeText.textContent = formatTime(elapsed);
+      timeText.textContent = formatHudTime(elapsed);
       centerText.textContent = "속도 " + Math.round(centerState.speed) + " · " + centerState.bulletCount + "발";
       refreshBestTexts();
 
@@ -755,56 +758,58 @@
         dashText.textContent = player.dashCooldownTimer.toFixed(1) + "초";
       }
 
-      zoneList.innerHTML = "";
-      zones.forEach((zone) => {
-        const item = document.createElement("div");
-        item.className = "zone-item";
-        const color = getCorruptionColor(zone.corruption, zone.turretActive);
-        item.innerHTML =
-          '<div class="name"><span class="swatch" style="color:' + color + "; background:" + color + '"></span>' +
-          zone.id +
-          "</div>" +
-          '<strong style="color:' + color + '">' +
-          Math.round(zone.corruption) +
-          "% " +
-          (zone.turretActive ? "터렛" : "정화 가능") +
-          "</strong>";
-        zoneList.appendChild(item);
-      });
-
       if (warningTimer <= 0) {
         warningText.classList.remove("show");
       }
     }
 
-    function startDash() {
+    function startDash(targetWorld = null) {
       if (gameState !== "playing" || !player.alive || player.dashCooldownTimer > 0 || player.dashTimer > 0) {
         return;
       }
 
-      let moveX = 0;
-      let moveY = 0;
-      if (keys["KeyA"] || keys["ArrowLeft"]) moveX -= 1;
-      if (keys["KeyD"] || keys["ArrowRight"]) moveX += 1;
-      if (keys["KeyW"] || keys["ArrowUp"]) moveY -= 1;
-      if (keys["KeyS"] || keys["ArrowDown"]) moveY += 1;
+      const maxDistance = getMaxDashDistance();
+      let dir = null;
+      let dashDistance = maxDistance;
 
-      if (moveX === 0 && moveY === 0) {
-        moveX = player.aimX;
-        moveY = player.aimY;
+      if (targetWorld) {
+        const deltaX = targetWorld.x - player.x;
+        const deltaY = targetWorld.y - player.y;
+        const targetDistance = Math.hypot(deltaX, deltaY);
+        if (targetDistance <= 1) {
+          return;
+        }
+        dir = normalize(deltaX, deltaY);
+        dashDistance = Math.min(maxDistance, targetDistance);
+      } else {
+        let moveX = 0;
+        let moveY = 0;
+        if (keys["KeyA"] || keys["ArrowLeft"]) moveX -= 1;
+        if (keys["KeyD"] || keys["ArrowRight"]) moveX += 1;
+        if (keys["KeyW"] || keys["ArrowUp"]) moveY -= 1;
+        if (keys["KeyS"] || keys["ArrowDown"]) moveY += 1;
+
+        if (moveX === 0 && moveY === 0) {
+          moveX = player.aimX;
+          moveY = player.aimY;
+        }
+        dir = normalize(moveX, moveY);
       }
 
-      const dir = normalize(moveX, moveY);
       player.aimX = dir.x;
       player.aimY = dir.y;
-      player.dashTimer = player.dashDuration;
+      dashState.dirX = dir.x;
+      dashState.dirY = dir.y;
+      dashState.remaining = dashDistance;
+      player.dashTimer = dashDistance / player.dashSpeed;
       player.dashCooldownTimer = player.dashCooldown;
       emitBurst(player.x, player.y, "#6ef5ff", 16, 240, 0.5);
     }
 
     function shootFromZone(zone) {
       const dir = normalize(player.x - zone.x, player.y - zone.y);
-      const bulletSpeed = 250 + elapsed * 5.2;
+      const turretState = getTurretShotState();
+      const bulletSpeed = turretState.speed;
       bullets.push({
         x: zone.x + dir.x * 64,
         y: zone.y + dir.y * 64,
@@ -812,10 +817,10 @@
         vy: dir.y * bulletSpeed,
         r: 7,
         life: 8,
-        color: "#ff9bea",
-        glow: "#ff79d8"
+        color: "#ff6b6b",
+        glow: "#ff4d4d"
       });
-      emitBurst(zone.x + dir.x * 52, zone.y + dir.y * 52, "#ff79d8", 9, 160, 0.45);
+      emitBurst(zone.x + dir.x * 52, zone.y + dir.y * 52, "#ff4d4d", 9, 160, 0.45);
     }
 
     function shootCenterBarrage() {
@@ -843,12 +848,12 @@
           vy: dirY * state.speed,
           r: 6 + Math.random() * 2,
           life: 7.5,
-          color: "#77f7ff",
-          glow: "#67f3ff"
+          color: "#ff6b6b",
+          glow: "#ff4d4d"
         });
       }
 
-      emitBurst(centerBarrage.x, centerBarrage.y, "#67f3ff", 12 + state.bulletCount, 130, 0.36);
+      emitBurst(centerBarrage.x, centerBarrage.y, "#ff4d4d", 12 + state.bulletCount, 130, 0.36);
     }
 
     function updatePlayer(dt) {
@@ -870,15 +875,23 @@
         player.dashCooldownTimer = Math.max(0, player.dashCooldownTimer - dt);
       }
 
-      if (player.dashTimer > 0) {
+      if (player.dashTimer > 0 && dashState.remaining > 0) {
         player.dashTimer = Math.max(0, player.dashTimer - dt);
-        player.vx = player.aimX * player.dashSpeed;
-        player.vy = player.aimY * player.dashSpeed;
+        const dashStep = Math.min(dashState.remaining, player.dashSpeed * dt);
+        dashState.remaining -= dashStep;
+        player.vx = dt > 0 ? dashState.dirX * (dashStep / dt) : 0;
+        player.vy = dt > 0 ? dashState.dirY * (dashStep / dt) : 0;
+        if (dashState.remaining <= 0.001) {
+          dashState.remaining = 0;
+          player.dashTimer = 0;
+        }
         spawnParticle(player.x, player.y, "#6ef5ff", 30, 0.28, 7);
       } else {
+        dashState.remaining = 0;
         const dir = moving ? normalize(moveX, moveY) : { x: 0, y: 0 };
-        player.vx = dir.x * player.speed;
-        player.vy = dir.y * player.speed;
+        const currentMoveSpeed = playerBaseSpeed + elapsed * PLAYER_SPEED_GROWTH_PER_SECOND;
+        player.vx = dir.x * currentMoveSpeed;
+        player.vy = dir.y * currentMoveSpeed;
       }
 
       player.x = clamp(player.x + player.vx * dt, player.r, WORLD.width - player.r);
@@ -933,7 +946,7 @@
         // Fully corrupted zones become turrets and keep shooting at the player.
         if (zone.turretActive) {
           zone.fireTimer -= dt;
-          const fireInterval = Math.max(0.62, 1.95 - elapsed * 0.01);
+          const fireInterval = getTurretShotState().fireInterval;
           if (zone.fireTimer <= 0) {
             zone.fireTimer = fireInterval;
             shootFromZone(zone);
@@ -962,7 +975,7 @@
         bullet.life -= dt;
 
         if (Math.random() < 50 * dt) {
-          spawnParticle(bullet.x, bullet.y, bullet.glow || "#ff79d8", 20, 0.22, 3);
+          spawnParticle(bullet.x, bullet.y, bullet.glow || "#ff4d4d", 20, 0.22, 3);
         }
 
         if (
@@ -1234,8 +1247,8 @@
       bullets.forEach((bullet) => {
         ctx.save();
         ctx.shadowBlur = 18;
-        ctx.shadowColor = bullet.glow || "#ff79d8";
-        ctx.fillStyle = bullet.color || "#ff9bea";
+        ctx.shadowColor = bullet.glow || "#ff4d4d";
+        ctx.fillStyle = bullet.color || "#ff6b6b";
         ctx.beginPath();
         ctx.arc(bullet.x, bullet.y, bullet.r, 0, Math.PI * 2);
         ctx.fill();
@@ -1258,58 +1271,45 @@
     }
 
     function renderMinimap() {
-      const mapW = 220;
-      const mapH = 160;
-      const x = window.innerWidth - mapW - 22;
-      const y = window.innerHeight - mapH - 22;
+      const size = 44;
+      const x = window.innerWidth - size - 16;
+      const y = 14;
+      const half = size / 2;
+      const playerMapX = x + (player.x / WORLD.width) * size;
+      const playerMapY = y + (player.y / WORLD.height) * size;
 
       ctx.save();
-      ctx.fillStyle = "rgba(4, 10, 20, 0.74)";
+      ctx.fillStyle = "rgba(4, 10, 20, 0.5)";
       ctx.strokeStyle = "rgba(103, 243, 255, 0.2)";
       ctx.lineWidth = 1;
-      roundRect(x, y, mapW, mapH, 16);
+      roundRect(x - 4, y - 4, size + 8, size + 8, 10);
       ctx.fill();
       ctx.stroke();
 
-      const scaleX = mapW / WORLD.width;
-      const scaleY = mapH / WORLD.height;
+      ctx.fillStyle = getCorruptionColor(zones[0].corruption, zones[0].turretActive);
+      ctx.fillRect(x, y, half, half);
+      ctx.fillStyle = getCorruptionColor(zones[1].corruption, zones[1].turretActive);
+      ctx.fillRect(x + half, y, half, half);
+      ctx.fillStyle = getCorruptionColor(zones[2].corruption, zones[2].turretActive);
+      ctx.fillRect(x, y + half, half, half);
+      ctx.fillStyle = getCorruptionColor(zones[3].corruption, zones[3].turretActive);
+      ctx.fillRect(x + half, y + half, half, half);
 
-      ctx.strokeStyle = "rgba(255,255,255,0.08)";
-      ctx.strokeRect(x + 10, y + 10, mapW - 20, mapH - 20);
-
-      ctx.fillStyle = "#67f3ff";
-      ctx.shadowBlur = 16;
-      ctx.shadowColor = "#67f3ff";
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
+      ctx.strokeRect(x, y, size, size);
       ctx.beginPath();
-      ctx.arc(x + centerBarrage.x * scaleX, y + centerBarrage.y * scaleY, 6, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(x + half, y);
+      ctx.lineTo(x + half, y + size);
+      ctx.moveTo(x, y + half);
+      ctx.lineTo(x + size, y + half);
+      ctx.stroke();
 
-      zones.forEach((zone) => {
-        const zx = x + zone.x * scaleX;
-        const zy = y + zone.y * scaleY;
-        const color = getCorruptionColor(zone.corruption, zone.turretActive);
-        ctx.fillStyle = color;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = color;
-        ctx.beginPath();
-        ctx.arc(zx, zy, 7, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      ctx.shadowBlur = 14;
-      ctx.shadowColor = "#7cf8ff";
-      ctx.fillStyle = "#7cf8ff";
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
+      ctx.fillStyle = "#05070c";
       ctx.beginPath();
-      ctx.arc(x + player.x * scaleX, y + player.y * scaleY, 5, 0, Math.PI * 2);
+      ctx.arc(playerMapX, playerMapY, 3, 0, Math.PI * 2);
       ctx.fill();
-
-      const camX = x + camera.x * scaleX;
-      const camY = y + camera.y * scaleY;
-      const camW = window.innerWidth * scaleX;
-      const camH = window.innerHeight * scaleY;
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = "rgba(255,255,255,0.24)";
-      ctx.strokeRect(camX, camY, camW, camH);
       ctx.restore();
     }
 
@@ -1464,6 +1464,21 @@
 
     window.addEventListener("keyup", (event) => {
       keys[event.code] = false;
+    });
+
+    window.addEventListener("mousemove", (event) => {
+      updateMousePosition(event);
+    });
+
+    canvas.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+    });
+
+    canvas.addEventListener("mousedown", (event) => {
+      if (event.button !== 2) return;
+      event.preventDefault();
+      updateMousePosition(event);
+      startDash({ x: mouse.worldX, y: mouse.worldY });
     });
 
     window.addEventListener("resize", resize);
