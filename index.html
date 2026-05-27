@@ -580,21 +580,21 @@
     }
 
     function getCenterBarrageState() {
-      const speed = 220 + elapsed * 7.5;
+      const speed = 220 + elapsed * 4.8;
       let bulletCount = 2;
-      let fireInterval = 1.05;
+      let fireInterval = 1.12;
 
-      if (speed >= 360) {
+      if (speed >= 420) {
         bulletCount = 3;
-        fireInterval = 0.82;
+        fireInterval = 0.94;
       }
-      if (speed >= 520) {
+      if (speed >= 600) {
         bulletCount = 5;
-        fireInterval = 0.62;
+        fireInterval = 0.78;
       }
-      if (speed >= 700) {
+      if (speed >= 780) {
         bulletCount = 7;
-        fireInterval = 0.45;
+        fireInterval = 0.64;
       }
 
       return { speed, bulletCount, fireInterval };
@@ -804,7 +804,7 @@
 
     function shootFromZone(zone) {
       const dir = normalize(player.x - zone.x, player.y - zone.y);
-      const bulletSpeed = 250 + elapsed * 8.5;
+      const bulletSpeed = 250 + elapsed * 5.2;
       bullets.push({
         x: zone.x + dir.x * 64,
         y: zone.y + dir.y * 64,
@@ -886,7 +886,7 @@
     }
 
     function updateZones(dt) {
-      const growthRate = (6.5 + elapsed * 0.16) * 0.2;
+      const growthRate = 6.5 * 0.2;
       const cleanseRate = 27 + elapsed * 0.05;
 
       zones.forEach((zone) => {
@@ -933,7 +933,7 @@
         // Fully corrupted zones become turrets and keep shooting at the player.
         if (zone.turretActive) {
           zone.fireTimer -= dt;
-          const fireInterval = Math.max(0.42, 1.85 - elapsed * 0.018);
+          const fireInterval = Math.max(0.62, 1.95 - elapsed * 0.01);
           if (zone.fireTimer <= 0) {
             zone.fireTimer = fireInterval;
             shootFromZone(zone);
