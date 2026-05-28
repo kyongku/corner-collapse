@@ -357,8 +357,8 @@
       <div class="screen-card">
         <div class="menu-tag">NEON SURVIVAL / MAIN MENU</div>
         <h2>Corner Collapse</h2>
-        <p>네 모서리의 붕괴와 중앙 탄막 코어를 동시에 버티는 대형 맵 생존 게임.</p>
-        <p>구역을 직접 정화하지 않으면 코너가 터렛으로 전환되고, 시간이 지날수록 중앙 탄막은 더 빠르고 더 조밀해집니다.</p>
+        <p>네 코너를 순서대로 정화하며 중앙 탄막 코어의 누적 위협도를 깎아내는 대형 맵 생존 게임.</p>
+        <p>오른쪽 위 지도에 표시된 1, 2, 3, 4 순서대로 구역을 채우면 중앙 압박이 100씩 감소합니다.</p>
 
         <div class="menu-score">
           <span class="label">로컬 최고 기록</span>
@@ -371,16 +371,16 @@
             <span>WASD 또는 방향키로 이동</span>
           </div>
           <div class="menu-box">
-            <strong>대시</strong>
-            <span>Shift 방향 대시 / 우클릭 마우스 위치 대시</span>
+            <strong>기동</strong>
+            <span>기본 이동속도로 넓은 맵을 빠르게 순환</span>
           </div>
           <div class="menu-box">
             <strong>정화</strong>
-            <span>코너 구역 안에 머물며 부패를 낮추기</span>
+            <span>지정된 순서 구역 안에 머물며 게이지를 100까지 채우기</span>
           </div>
           <div class="menu-box">
-            <strong>실패 조건</strong>
-            <span>탄환 1회 피격 시 즉시 게임오버</span>
+            <strong>생존 조건</strong>
+            <span>4구역 순환 정화로 중앙 위협도를 계속 깎아내기</span>
           </div>
         </div>
 
@@ -434,12 +434,19 @@
     const menuChoice = document.getElementById("menuChoice");
     const warningText = document.getElementById("warningText");
 
-    const WORLD = { width: 2400, height: 1800 };
+    const WORLD = { width: 3200, height: 2400 };
     const WORLD_CENTER = { x: WORLD.width / 2, y: WORLD.height / 2 };
     const STORAGE_KEY = "cornerCollapseBest";
     const CENTER_BARRAGE_START_DELAY = 1;
-    const CENTER_BULLET_SPEED_GROWTH_PER_SECOND = 8.4;
-    const TURRET_BULLET_SPEED_GROWTH_PER_SECOND = 8.2;
+    const CENTER_PRESSURE_START = 0;
+    const CENTER_PRESSURE_GROWTH_PER_SECOND = 12;
+    const CENTER_PRESSURE_REDUCTION_ON_CYCLE = 100;
+    const CENTER_SPEED_PER_PRESSURE = 0.7;
+    const PURIFICATION_FILL_PER_SECOND = 58;
+    const BULLET_PARTICLE_DENSITY = 0.45;
+    const MIN_ZOOM = 0.75;
+    const MAX_ZOOM = 1.45;
+    const ZOOM_STEP = 0.1;
     const MENU_PARTICLES = Array.from({ length: 48 }, (_, i) => ({
       angle: (i / 48) * Math.PI * 2,
       radius: 180 + Math.random() * 260,
@@ -462,10 +469,14 @@
     let warningTimer = 0;
     let menuDrift = 0;
     let gameOverChoice = 0;
+    let centerPressure = CENTER_PRESSURE_START;
+    let purificationOrder = [0, 1, 2, 3];
+    let currentPurificationStep = 0;
 
     const camera = {
       x: 0,
       y: 0,
+      zoom: 1,
       shake: 0,
       shakePower: 0
     };
@@ -474,7 +485,7 @@
       x: WORLD.width / 2,
       y: WORLD.height / 2,
       r: 14,
-      speed: 550,
+      speed: 820,
       vx: 0,
       vy: 0,
       dashSpeed: 5250,
@@ -486,7 +497,7 @@
       aimY: 0,
       alive: true
     };
-    const PLAYER_SPEED_GROWTH_PER_SECOND = CENTER_BULLET_SPEED_GROWTH_PER_SECOND * 0.2;
+    const PLAYER_SPEED_GROWTH_PER_SECOND = CENTER_PRESSURE_GROWTH_PER_SECOND * CENTER_SPEED_PER_PRESSURE * 0.2;
     const playerBaseSpeed = player.speed;
 
     const bullets = [];
@@ -508,18 +519,18 @@
     };
 
     const zoneDefs = [
-      { id: "좌상", x: 260, y: 260 },
-      { id: "우상", x: WORLD.width - 260, y: 260 },
-      { id: "좌하", x: 260, y: WORLD.height - 260 },
-      { id: "우하", x: WORLD.width - 260, y: WORLD.height - 260 }
+      { id: "좌상", x: 300, y: 300 },
+      { id: "우상", x: WORLD.width - 300, y: 300 },
+      { id: "좌하", x: 300, y: WORLD.height - 300 },
+      { id: "우하", x: WORLD.width - 300, y: WORLD.height - 300 }
     ];
 
     const zones = zoneDefs.map((z) => ({
       ...z,
       r: 130,
-      corruption: 16 + Math.random() * 20,
-      turretActive: false,
-      fireTimer: 0,
+      purity: 0,
+      completed: false,
+      order: 0,
       pulse: Math.random() * Math.PI * 2
     }));
 
@@ -534,6 +545,22 @@
 
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
+    }
+
+    function getViewportWorldWidth() {
+      return window.innerWidth / camera.zoom;
+    }
+
+    function getViewportWorldHeight() {
+      return window.innerHeight / camera.zoom;
+    }
+
+    function adjustZoom(direction) {
+      camera.zoom = clamp(
+        Math.round((camera.zoom + direction * ZOOM_STEP) * 100) / 100,
+        MIN_ZOOM,
+        MAX_ZOOM
+      );
     }
 
     function lerp(a, b, t) {
@@ -557,30 +584,6 @@
       return value.toFixed(1) + "s";
     }
 
-    function getMaxDashDistance() {
-      return player.dashSpeed * player.dashDuration;
-    }
-
-    function getPointerWorldPosition(event) {
-      const rect = canvas.getBoundingClientRect();
-      const screenX = ((event.clientX - rect.left) / rect.width) * window.innerWidth;
-      const screenY = ((event.clientY - rect.top) / rect.height) * window.innerHeight;
-      return {
-        screenX,
-        screenY,
-        worldX: camera.x + screenX,
-        worldY: camera.y + screenY
-      };
-    }
-
-    function updateMousePosition(event) {
-      const pointer = getPointerWorldPosition(event);
-      mouse.screenX = pointer.screenX;
-      mouse.screenY = pointer.screenY;
-      mouse.worldX = pointer.worldX;
-      mouse.worldY = pointer.worldY;
-    }
-
     function getCorruptionColor(value, active) {
       if (active || value >= 100) return "#c76bff";
       if (value >= 75) return "#ff4d7a";
@@ -589,17 +592,48 @@
       return "#57f2cc";
     }
 
-    function getCenterBarrageState() {
-      const speed = 220 + elapsed * CENTER_BULLET_SPEED_GROWTH_PER_SECOND;
-      const bulletCount = Math.max(2, Math.min(18, 2 + Math.floor((speed - 220) / 85)));
-      const fireInterval = Math.max(0.16, 1.12 - (speed - 220) * 0.00105);
-      return { speed, bulletCount, fireInterval };
+    function getZoneMissionColor(zone) {
+      if (zone.completed) return "#57f2cc";
+      if (getCurrentTargetZone() === zone) return "#ffe36c";
+      if (zone.purity > 0) return "#ff9648";
+      return "#35516c";
     }
 
-    function getTurretShotState() {
-      const speed = 250 + elapsed * TURRET_BULLET_SPEED_GROWTH_PER_SECOND;
-      const fireInterval = Math.max(0.34, 2.0 - (speed - 250) * 0.003);
-      return { speed, fireInterval };
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+
+    function getCurrentTargetZone() {
+      return zones[purificationOrder[currentPurificationStep]] || null;
+    }
+
+    function resetPurificationCycle() {
+      purificationOrder = shuffle([0, 1, 2, 3]);
+      currentPurificationStep = 0;
+      zones.forEach((zone, index) => {
+        zone.purity = 0;
+        zone.completed = false;
+        zone.order = purificationOrder.indexOf(index) + 1;
+        zone.pulse = Math.random() * Math.PI * 2;
+      });
+    }
+
+    function completePurificationCycle() {
+      centerPressure = Math.max(0, centerPressure - CENTER_PRESSURE_REDUCTION_ON_CYCLE);
+      emitBurst(centerBarrage.x, centerBarrage.y, "#57f2cc", 28, 180, 0.7);
+      showWarning("정화 순환 완료 - 중앙 위협도 100 감소");
+      resetPurificationCycle();
+    }
+
+    function getCenterBarrageState() {
+      const speed = 220 + centerPressure * CENTER_SPEED_PER_PRESSURE;
+      const bulletCount = Math.max(2, Math.min(14, 2 + Math.floor(centerPressure / 100)));
+      const fireInterval = Math.max(0.22, 1.12 - centerPressure * 0.0021);
+      return { speed, bulletCount, fireInterval, pressure: centerPressure };
     }
 
     function spawnParticle(x, y, color, speed = 120, life = 0.65, size = 2 + Math.random() * 3) {
@@ -621,6 +655,14 @@
       for (let i = 0; i < count; i++) {
         spawnParticle(x, y, color, speed, life, 2 + Math.random() * 3);
       }
+    }
+
+    function getBulletEffectScale(speed) {
+      return clamp(280 / Math.max(280, speed), 0.22, 1);
+    }
+
+    function getScaledBulletEffectCount(baseCount, speed) {
+      return Math.max(1, Math.round(baseCount * getBulletEffectScale(speed) * BULLET_PARTICLE_DENSITY));
     }
 
     function saveBestScore() {
@@ -693,6 +735,7 @@
       gameState = "playing";
       elapsed = 0;
       warningTimer = 0;
+      centerPressure = CENTER_PRESSURE_START;
 
       player.x = WORLD.width / 2;
       player.y = WORLD.height / 2;
@@ -710,13 +753,7 @@
 
       centerBarrage.fireTimer = CENTER_BARRAGE_START_DELAY;
       centerBarrage.pulse = 0;
-
-      zones.forEach((zone, index) => {
-        zone.corruption = 10 + index * 4 + Math.random() * 18;
-        zone.turretActive = false;
-        zone.fireTimer = 0;
-        zone.pulse = Math.random() * Math.PI * 2;
-      });
+      resetPurificationCycle();
 
       setGameplayUiVisible(true);
       menuScreen.classList.add("hidden");
@@ -749,7 +786,7 @@
       const centerState = getCenterBarrageState();
 
       timeText.textContent = formatHudTime(elapsed);
-      centerText.textContent = "속도 " + Math.round(centerState.speed) + " · " + centerState.bulletCount + "발";
+      centerText.textContent = "위협 " + Math.round(centerState.pressure);
       refreshBestTexts();
 
       if (player.dashCooldownTimer <= 0) {
@@ -763,49 +800,6 @@
       }
     }
 
-    function startDash(targetWorld = null) {
-      if (gameState !== "playing" || !player.alive || player.dashCooldownTimer > 0 || player.dashTimer > 0) {
-        return;
-      }
-
-      const maxDistance = getMaxDashDistance();
-      let dir = null;
-      let dashDistance = maxDistance;
-
-      if (targetWorld) {
-        const deltaX = targetWorld.x - player.x;
-        const deltaY = targetWorld.y - player.y;
-        const targetDistance = Math.hypot(deltaX, deltaY);
-        if (targetDistance <= 1) {
-          return;
-        }
-        dir = normalize(deltaX, deltaY);
-        dashDistance = Math.min(maxDistance, targetDistance);
-      } else {
-        let moveX = 0;
-        let moveY = 0;
-        if (keys["KeyA"] || keys["ArrowLeft"]) moveX -= 1;
-        if (keys["KeyD"] || keys["ArrowRight"]) moveX += 1;
-        if (keys["KeyW"] || keys["ArrowUp"]) moveY -= 1;
-        if (keys["KeyS"] || keys["ArrowDown"]) moveY += 1;
-
-        if (moveX === 0 && moveY === 0) {
-          moveX = player.aimX;
-          moveY = player.aimY;
-        }
-        dir = normalize(moveX, moveY);
-      }
-
-      player.aimX = dir.x;
-      player.aimY = dir.y;
-      dashState.dirX = dir.x;
-      dashState.dirY = dir.y;
-      dashState.remaining = dashDistance;
-      player.dashTimer = dashDistance / player.dashSpeed;
-      player.dashCooldownTimer = player.dashCooldown;
-      emitBurst(player.x, player.y, "#6ef5ff", 16, 240, 0.5);
-    }
-
     function shootFromZone(zone) {
       const dir = normalize(player.x - zone.x, player.y - zone.y);
       const turretState = getTurretShotState();
@@ -815,12 +809,20 @@
         y: zone.y + dir.y * 64,
         vx: dir.x * bulletSpeed,
         vy: dir.y * bulletSpeed,
+        speed: bulletSpeed,
         r: 7,
         life: 8,
         color: "#ff6b6b",
         glow: "#ff4d4d"
       });
-      emitBurst(zone.x + dir.x * 52, zone.y + dir.y * 52, "#ff4d4d", 9, 160, 0.45);
+      emitBurst(
+        zone.x + dir.x * 52,
+        zone.y + dir.y * 52,
+        "#ff4d4d",
+        getScaledBulletEffectCount(6, bulletSpeed),
+        160,
+        0.45
+      );
     }
 
     function shootCenterBarrage() {
@@ -846,6 +848,7 @@
           y: centerBarrage.y + dirY * radius,
           vx: dirX * state.speed,
           vy: dirY * state.speed,
+          speed: state.speed,
           r: 6 + Math.random() * 2,
           life: 7.5,
           color: "#ff6b6b",
@@ -853,7 +856,14 @@
         });
       }
 
-      emitBurst(centerBarrage.x, centerBarrage.y, "#ff4d4d", 12 + state.bulletCount, 130, 0.36);
+      emitBurst(
+        centerBarrage.x,
+        centerBarrage.y,
+        "#ff4d4d",
+        getScaledBulletEffectCount(8 + state.bulletCount * 0.5, state.speed),
+        130,
+        0.36
+      );
     }
 
     function updatePlayer(dt) {
@@ -871,97 +881,61 @@
         player.aimY = dir.y;
       }
 
-      if (player.dashCooldownTimer > 0) {
-        player.dashCooldownTimer = Math.max(0, player.dashCooldownTimer - dt);
-      }
-
-      if (player.dashTimer > 0 && dashState.remaining > 0) {
-        player.dashTimer = Math.max(0, player.dashTimer - dt);
-        const dashStep = Math.min(dashState.remaining, player.dashSpeed * dt);
-        dashState.remaining -= dashStep;
-        player.vx = dt > 0 ? dashState.dirX * (dashStep / dt) : 0;
-        player.vy = dt > 0 ? dashState.dirY * (dashStep / dt) : 0;
-        if (dashState.remaining <= 0.001) {
-          dashState.remaining = 0;
-          player.dashTimer = 0;
-        }
-        spawnParticle(player.x, player.y, "#6ef5ff", 30, 0.28, 7);
-      } else {
-        dashState.remaining = 0;
-        const dir = moving ? normalize(moveX, moveY) : { x: 0, y: 0 };
-        const currentMoveSpeed = playerBaseSpeed + elapsed * PLAYER_SPEED_GROWTH_PER_SECOND;
-        player.vx = dir.x * currentMoveSpeed;
-        player.vy = dir.y * currentMoveSpeed;
-      }
+      dashState.remaining = 0;
+      player.dashTimer = 0;
+      player.dashCooldownTimer = 0;
+      const dir = moving ? normalize(moveX, moveY) : { x: 0, y: 0 };
+      const currentMoveSpeed = playerBaseSpeed + elapsed * PLAYER_SPEED_GROWTH_PER_SECOND;
+      player.vx = dir.x * currentMoveSpeed;
+      player.vy = dir.y * currentMoveSpeed;
 
       player.x = clamp(player.x + player.vx * dt, player.r, WORLD.width - player.r);
       player.y = clamp(player.y + player.vy * dt, player.r, WORLD.height - player.r);
     }
 
     function updateZones(dt) {
-      const growthRate = 6.5 * 0.2;
-      const cleanseRate = 27 + elapsed * 0.05;
+      const targetZone = getCurrentTargetZone();
 
       zones.forEach((zone) => {
-        zone.pulse += dt * 2.5;
+        zone.pulse += dt * (zone.completed ? 1.8 : 2.5);
         const inside = distance(player.x, player.y, zone.x, zone.y) <= zone.r - player.r * 0.3;
-        const prevActive = zone.turretActive;
 
-        // Zone corruption rises when ignored and falls while the player stays inside.
-        if (inside) {
-          zone.corruption = Math.max(0, zone.corruption - cleanseRate * dt);
-          if (Math.random() < 16 * dt) {
+        // Only the current numbered target can be filled, and once completed it
+        // stays locked until the whole 4-step purification cycle ends.
+        if (zone === targetZone && inside && !zone.completed) {
+          zone.purity = Math.min(100, zone.purity + PURIFICATION_FILL_PER_SECOND * dt);
+          if (Math.random() < 18 * dt) {
             spawnParticle(
               zone.x + (Math.random() - 0.5) * zone.r * 1.2,
               zone.y + (Math.random() - 0.5) * zone.r * 1.2,
               "#57f2cc",
-              70,
+              80,
               0.55,
               3 + Math.random() * 3
             );
           }
-        } else {
-          zone.corruption = Math.min(100, zone.corruption + growthRate * dt);
-          if (Math.random() < 8 * dt) {
-            spawnParticle(
-              zone.x + (Math.random() - 0.5) * zone.r,
-              zone.y + (Math.random() - 0.5) * zone.r,
-              getCorruptionColor(zone.corruption, zone.turretActive),
-              50,
-              0.45,
-              2 + Math.random() * 2
-            );
-          }
         }
 
-        zone.turretActive = zone.corruption >= 100;
-
-        if (!prevActive && zone.turretActive) {
-          showWarning(zone.id + " 구역이 붕괴하여 터렛이 활성화되었습니다");
-          emitBurst(zone.x, zone.y, "#c76bff", 24, 220, 0.8);
-        } else if (prevActive && !zone.turretActive) {
-          emitBurst(zone.x, zone.y, "#57f2cc", 20, 200, 0.7);
-        }
-
-        // Fully corrupted zones become turrets and keep shooting at the player.
-        if (zone.turretActive) {
-          zone.fireTimer -= dt;
-          const fireInterval = getTurretShotState().fireInterval;
-          if (zone.fireTimer <= 0) {
-            zone.fireTimer = fireInterval;
-            shootFromZone(zone);
+        if (zone.purity >= 100 && !zone.completed) {
+          zone.purity = 100;
+          zone.completed = true;
+          emitBurst(zone.x, zone.y, "#57f2cc", 24, 220, 0.8);
+          showWarning(zone.order + "번 " + zone.id + " 정화 완료");
+          currentPurificationStep += 1;
+          if (currentPurificationStep >= purificationOrder.length) {
+            completePurificationCycle();
           }
-        } else {
-          zone.fireTimer = 0;
         }
       });
     }
 
     function updateCenterBarrage(dt) {
+      centerPressure += CENTER_PRESSURE_GROWTH_PER_SECOND * dt;
       centerBarrage.pulse += dt * 2.8;
       centerBarrage.fireTimer -= dt;
 
-      // The center core ramps in speed first, then unlocks denser volleys.
+      // The center core grows from a persistent pressure meter. Clearing a full
+      // 4-zone sequence cuts that meter back by 100 instead of giving a short buff.
       if (centerBarrage.fireTimer <= 0) {
         shootCenterBarrage();
       }
@@ -974,8 +948,8 @@
         bullet.y += bullet.vy * dt;
         bullet.life -= dt;
 
-        if (Math.random() < 50 * dt) {
-          spawnParticle(bullet.x, bullet.y, bullet.glow || "#ff4d4d", 20, 0.22, 3);
+        if (Math.random() < 24 * dt * getBulletEffectScale(bullet.speed || 280) * BULLET_PARTICLE_DENSITY) {
+          spawnParticle(bullet.x, bullet.y, bullet.glow || "#ff4d4d", 16, 0.16, 2.2);
         }
 
         if (
@@ -1012,8 +986,10 @@
 
     function updateCamera(dt) {
       // The camera follows the player during gameplay and keeps death shake.
-      const targetX = clamp(player.x - window.innerWidth / 2, 0, WORLD.width - window.innerWidth);
-      const targetY = clamp(player.y - window.innerHeight / 2, 0, WORLD.height - window.innerHeight);
+      const viewportWidth = getViewportWorldWidth();
+      const viewportHeight = getViewportWorldHeight();
+      const targetX = clamp(player.x - viewportWidth / 2, 0, WORLD.width - viewportWidth);
+      const targetY = clamp(player.y - viewportHeight / 2, 0, WORLD.height - viewportHeight);
       camera.x = lerp(camera.x, targetX, 1 - Math.exp(-7 * dt));
       camera.y = lerp(camera.y, targetY, 1 - Math.exp(-7 * dt));
 
@@ -1024,30 +1000,42 @@
 
     function renderGrid() {
       const grid = 60;
-      const offsetX = -camera.x % grid;
-      const offsetY = -camera.y % grid;
+      const viewportWidth = getViewportWorldWidth();
+      const viewportHeight = getViewportWorldHeight();
+      const startX = Math.floor(camera.x / grid) * grid;
+      const startY = Math.floor(camera.y / grid) * grid;
+      const endX = camera.x + viewportWidth + grid;
+      const endY = camera.y + viewportHeight + grid;
+      const zoom = camera.zoom;
 
       ctx.fillStyle = "#040913";
       ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
       ctx.strokeStyle = "rgba(90, 180, 255, 0.08)";
       ctx.lineWidth = 1;
-      for (let x = offsetX; x < window.innerWidth; x += grid) {
+      for (let x = startX; x <= endX; x += grid) {
+        const screenX = (x - camera.x) * zoom;
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, window.innerHeight);
+        ctx.moveTo(screenX, 0);
+        ctx.lineTo(screenX, window.innerHeight);
         ctx.stroke();
       }
-      for (let y = offsetY; y < window.innerHeight; y += grid) {
+      for (let y = startY; y <= endY; y += grid) {
+        const screenY = (y - camera.y) * zoom;
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(window.innerWidth, y);
+        ctx.moveTo(0, screenY);
+        ctx.lineTo(window.innerWidth, screenY);
         ctx.stroke();
       }
 
       ctx.strokeStyle = "rgba(125, 240, 255, 0.24)";
       ctx.lineWidth = 3;
-      ctx.strokeRect(-camera.x, -camera.y, WORLD.width, WORLD.height);
+      ctx.strokeRect(
+        -camera.x * zoom,
+        -camera.y * zoom,
+        WORLD.width * zoom,
+        WORLD.height * zoom
+      );
     }
 
     function renderMenuBackdrop() {
@@ -1117,7 +1105,9 @@
       const shakeX = camera.shake > 0 ? (Math.random() - 0.5) * camera.shakePower * camera.shake : 0;
       const shakeY = camera.shake > 0 ? (Math.random() - 0.5) * camera.shakePower * camera.shake : 0;
       ctx.save();
-      ctx.translate(-camera.x + shakeX, -camera.y + shakeY);
+      ctx.translate(shakeX, shakeY);
+      ctx.scale(camera.zoom, camera.zoom);
+      ctx.translate(-camera.x, -camera.y);
       callback();
       ctx.restore();
     }
@@ -1158,16 +1148,17 @@
     }
 
     function renderZone(zone) {
-      const active = zone.turretActive;
-      const baseColor = getCorruptionColor(zone.corruption, active);
-      const aura = 18 + Math.sin(zone.pulse) * 4;
+      const targetZone = getCurrentTargetZone();
+      const isTarget = zone === targetZone;
+      const baseColor = getZoneMissionColor(zone);
+      const aura = 16 + Math.sin(zone.pulse) * (isTarget ? 7 : 3);
 
       ctx.save();
       ctx.beginPath();
       ctx.arc(zone.x, zone.y, zone.r + aura, 0, Math.PI * 2);
       const glow = ctx.createRadialGradient(zone.x, zone.y, 18, zone.x, zone.y, zone.r + aura);
-      glow.addColorStop(0, active ? "rgba(199, 107, 255, 0.26)" : "rgba(87, 242, 204, 0.22)");
-      glow.addColorStop(0.6, active ? "rgba(255, 77, 122, 0.16)" : "rgba(255, 227, 108, 0.08)");
+      glow.addColorStop(0, zone.completed ? "rgba(87, 242, 204, 0.28)" : isTarget ? "rgba(255, 227, 108, 0.22)" : "rgba(53, 81, 108, 0.18)");
+      glow.addColorStop(0.6, isTarget ? "rgba(255, 150, 72, 0.12)" : "rgba(0, 0, 0, 0.04)");
       glow.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = glow;
       ctx.fill();
@@ -1181,7 +1172,7 @@
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.arc(zone.x, zone.y, zone.r - 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (zone.corruption / 100));
+      ctx.arc(zone.x, zone.y, zone.r - 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (zone.purity / 100));
       ctx.lineWidth = 10;
       ctx.lineCap = "round";
       ctx.strokeStyle = baseColor;
@@ -1193,39 +1184,21 @@
       ctx.fillStyle = baseColor;
       ctx.font = "700 22px Malgun Gothic";
       ctx.textAlign = "center";
-      ctx.fillText(zone.id, zone.x, zone.y - 6);
+      ctx.fillText(zone.order + " · " + zone.id, zone.x, zone.y - 8);
       ctx.fillStyle = "#d7efff";
       ctx.font = "600 18px Malgun Gothic";
-      ctx.fillText(Math.round(zone.corruption) + "%", zone.x, zone.y + 24);
+      ctx.fillText(zone.completed ? "완료" : Math.round(zone.purity) + "%", zone.x, zone.y + 24);
 
-      if (active) {
-        const aim = normalize(player.x - zone.x, player.y - zone.y);
-        ctx.save();
-        ctx.translate(zone.x, zone.y);
-        ctx.rotate(Math.atan2(aim.y, aim.x));
-        ctx.fillStyle = "rgba(255, 80, 170, 0.95)";
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = "#ff5dc4";
-        ctx.beginPath();
-        ctx.moveTo(-16, -18);
-        ctx.lineTo(26, 0);
-        ctx.lineTo(-16, 18);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillRect(-22, -10, 24, 20);
-        ctx.restore();
-      } else {
-        ctx.beginPath();
-        ctx.arc(zone.x, zone.y, 18 + Math.sin(zone.pulse * 1.7) * 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(103, 243, 255, 0.3)";
-        ctx.fill();
-      }
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, 18 + Math.sin(zone.pulse * 1.7) * 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = zone.completed ? "rgba(87, 242, 204, 0.4)" : isTarget ? "rgba(255, 227, 108, 0.34)" : "rgba(90, 140, 180, 0.18)";
+      ctx.fill();
       ctx.restore();
     }
 
     function renderPlayer() {
       ctx.save();
-      const glow = player.dashTimer > 0 ? "#6ef5ff" : "#7cf8ff";
+      const glow = "#7cf8ff";
       ctx.shadowBlur = 22;
       ctx.shadowColor = glow;
       ctx.fillStyle = glow;
@@ -1270,6 +1243,34 @@
       });
     }
 
+    function renderTargetArrow() {
+      const targetZone = getCurrentTargetZone();
+      if (!targetZone) return;
+
+      const dir = normalize(targetZone.x - player.x, targetZone.y - player.y);
+      const angle = Math.atan2(dir.y, dir.x);
+
+      ctx.save();
+      ctx.translate(player.x + dir.x * 34, player.y + dir.y * 34);
+      ctx.rotate(angle);
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = "#ffe36c";
+      ctx.fillStyle = "#ffe36c";
+      ctx.beginPath();
+      ctx.moveTo(18, 0);
+      ctx.lineTo(-10, -9);
+      ctx.lineTo(-10, 9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillRect(-18, -3, 18, 6);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#fff7c0";
+      ctx.font = "700 14px Malgun Gothic";
+      ctx.textAlign = "center";
+      ctx.fillText(String(targetZone.order), -2, -14);
+      ctx.restore();
+    }
+
     function renderMinimap() {
       const size = 44;
       const x = window.innerWidth - size - 16;
@@ -1286,13 +1287,13 @@
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = getCorruptionColor(zones[0].corruption, zones[0].turretActive);
+      ctx.fillStyle = getZoneMissionColor(zones[0]);
       ctx.fillRect(x, y, half, half);
-      ctx.fillStyle = getCorruptionColor(zones[1].corruption, zones[1].turretActive);
+      ctx.fillStyle = getZoneMissionColor(zones[1]);
       ctx.fillRect(x + half, y, half, half);
-      ctx.fillStyle = getCorruptionColor(zones[2].corruption, zones[2].turretActive);
+      ctx.fillStyle = getZoneMissionColor(zones[2]);
       ctx.fillRect(x, y + half, half, half);
-      ctx.fillStyle = getCorruptionColor(zones[3].corruption, zones[3].turretActive);
+      ctx.fillStyle = getZoneMissionColor(zones[3]);
       ctx.fillRect(x + half, y + half, half, half);
 
       ctx.strokeStyle = "rgba(255,255,255,0.16)";
@@ -1303,6 +1304,36 @@
       ctx.moveTo(x, y + half);
       ctx.lineTo(x + size, y + half);
       ctx.stroke();
+
+      const cells = [
+        { zone: zones[0], cx: x + half * 0.5, cy: y + half * 0.68 },
+        { zone: zones[1], cx: x + half * 1.5, cy: y + half * 0.68 },
+        { zone: zones[2], cx: x + half * 0.5, cy: y + half * 1.68 },
+        { zone: zones[3], cx: x + half * 1.5, cy: y + half * 1.68 }
+      ];
+
+      cells.forEach(({ zone, cx, cy }) => {
+        ctx.fillStyle = zone.completed ? "#041018" : "#f4fbff";
+        ctx.font = "700 11px Malgun Gothic";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(zone.order), cx, cy);
+      });
+
+      const targetZone = getCurrentTargetZone();
+      if (targetZone) {
+        const cellIndex = zones.indexOf(targetZone);
+        const cellRects = [
+          { x: x, y: y },
+          { x: x + half, y: y },
+          { x: x, y: y + half },
+          { x: x + half, y: y + half }
+        ];
+        const rect = cellRects[cellIndex];
+        ctx.strokeStyle = "#fff3a6";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rect.x + 1, rect.y + 1, half - 2, half - 2);
+      }
 
       ctx.shadowBlur = 8;
       ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
@@ -1332,6 +1363,7 @@
         renderBullets();
         if (player.alive) {
           renderPlayer();
+          renderTargetArrow();
         }
       });
       renderMinimap();
@@ -1399,6 +1431,18 @@
     window.addEventListener("keydown", (event) => {
       keys[event.code] = true;
 
+      if (event.code === "Comma" || event.code === "Minus" || event.code === "NumpadSubtract") {
+        event.preventDefault();
+        adjustZoom(-1);
+        return;
+      }
+
+      if (event.code === "Period" || event.code === "Equal" || event.code === "NumpadAdd") {
+        event.preventDefault();
+        adjustZoom(1);
+        return;
+      }
+
       if (event.code === "Escape") {
         event.preventDefault();
         if (gameState === "playing") {
@@ -1409,11 +1453,6 @@
           resumeGame();
           return;
         }
-      }
-
-      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
-        event.preventDefault();
-        startDash();
       }
 
       if (gameState === "gameover") {
@@ -1464,21 +1503,6 @@
 
     window.addEventListener("keyup", (event) => {
       keys[event.code] = false;
-    });
-
-    window.addEventListener("mousemove", (event) => {
-      updateMousePosition(event);
-    });
-
-    canvas.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-    });
-
-    canvas.addEventListener("mousedown", (event) => {
-      if (event.button !== 2) return;
-      event.preventDefault();
-      updateMousePosition(event);
-      startDash({ x: mouse.worldX, y: mouse.worldY });
     });
 
     window.addEventListener("resize", resize);
